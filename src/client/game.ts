@@ -40,12 +40,39 @@ export function randomSeed(): string {
   return Array.from(bytes, (b) => SEED_ALPHABET[b % SEED_ALPHABET.length]).join('');
 }
 
+/** Seeds that can live in the URL hash (`#QX7P2M`), which is what a shared link carries. */
+const HASH_SEED = /^[A-Za-z0-9-]{1,32}$/;
+
+function seedFromHash(): string | null {
+  try {
+    const seed = decodeURIComponent(location.hash.slice(1)).trim();
+    return HASH_SEED.test(seed) ? seed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `?seed=anything` wins, then `#SEED`. */
 function seedFromUrl(): string | null {
   try {
     const seed = new URLSearchParams(location.search).get('seed')?.trim();
-    return seed ? seed.slice(0, 32) : null;
+    if (seed) return seed.slice(0, 32);
   } catch {
-    return null;
+    // Fall through to the hash.
+  }
+  return seedFromHash();
+}
+
+/** Put the seed in the hash so the address (and a copied link) opens this mountain. */
+function writeSeedToUrl(seed: string): void {
+  if (!HASH_SEED.test(seed)) return; // Leave an unusual ?seed= value where it is.
+  try {
+    const params = new URLSearchParams(location.search);
+    params.delete('seed');
+    const query = params.toString();
+    history.replaceState(history.state, '', `${location.pathname}${query ? `?${query}` : ''}#${seed}`);
+  } catch {
+    // Some embeds forbid touching history; the seed is still shown on screen.
   }
 }
 
@@ -117,11 +144,7 @@ export class Game {
     this.hud.setSeed(seed);
     this.resultAt = -1;
     this.resultShown = false;
-    try {
-      history.replaceState(null, '', `?seed=${encodeURIComponent(seed)}`);
-    } catch {
-      // Some embeds forbid touching history; the seed is still shown on screen.
-    }
+    writeSeedToUrl(seed);
   }
 
   /** Start or resume play. Must run inside a user gesture (pointer lock and audio need one). */
@@ -200,6 +223,14 @@ export class Game {
           this.hud.popup(this.sfx.toggleMute() ? 'Muted' : 'Sound on', '#a9d4ff');
           break;
       }
+    });
+
+    // Someone pasted or edited a #SEED: switch to that mountain.
+    window.addEventListener('hashchange', () => {
+      const seed = seedFromHash();
+      if (!seed || seed === this.seed) return;
+      this.newRun(seed);
+      if (this.mode === 'ended') this.setMode('playing');
     });
 
     window.addEventListener('resize', () => this.world.resize());

@@ -20,8 +20,8 @@ Then open the printed local URL and click to drop in. `npm run build` makes a st
 `dist/` that runs from any static host (it uses relative paths). `npm test` runs the simulation
 tests.
 
-Add `?seed=anything` to the URL to ski a specific mountain. The seed is shown on screen, so a
-run can be shared.
+The current mountain's seed is shown on screen and kept in the address as `#SEED`, so a copied
+link opens the same mountain. `?seed=anything` also works for seeds with other characters.
 
 ## Controls
 
