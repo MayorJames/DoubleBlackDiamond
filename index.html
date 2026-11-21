@@ -3,100 +3,161 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="A first-person spy shooter where you never stop skiing." />
+    <meta name="description" content="Build the mountain, then ski it. A loop-building spy roguelite in black, white and red." />
     <title>Double Black Diamond</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=VT323&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <canvas id="game"></canvas>
-
-    <div id="hud" class="hidden">
-      <div class="hud-score">
-        <div id="score-card" class="card score-card"><span class="label">Score</span><span id="score" class="value">0</span></div>
-        <div class="chip time-chip"><span id="time">0:00.00</span></div>
-      </div>
-      <div class="hud-progress">
-        <div class="track"><div id="progress-fill" class="fill"></div><div id="progress-skier" class="skier"></div></div>
-        <div id="togo" class="togo">1300 m to base camp</div>
-      </div>
-      <div class="chip hud-seed">Seed <b id="seed">------</b></div>
-
-      <div id="hand" class="hand hidden">
-        <div class="hand-row">
-          <div class="hand-chips"><span class="label">Chips</span><b id="hand-chips">0</b></div>
-          <div class="hand-x">×</div>
-          <div class="hand-mult"><span class="label">Mult</span><b id="hand-mult">1.0</b></div>
+    <!-- The lodge: the hub between expeditions. -->
+    <section id="lodge-screen" class="screen">
+      <header class="lodge-head">
+        <h1>Double <span>Black</span> Diamond</h1>
+        <p class="tagline">Build the mountain. Then ski it. You can't stop.</p>
+      </header>
+      <div class="lodge-body">
+        <div class="lodge-col">
+          <section class="panel stash">
+            <h2>The lodge</h2>
+            <div class="stash-row">
+              <div><span class="label">Cash</span><b id="p-cash">$0</b></div>
+              <div><span class="label">Intel</span><b id="p-intel">0</b></div>
+              <div><span class="label">Scrap</span><b id="p-scrap">0</b></div>
+            </div>
+            <p id="p-record" class="muted"></p>
+          </section>
+          <section class="panel expedition">
+            <h2>Next expedition</h2>
+            <span class="label">Trail rating</span>
+            <div id="ratings" class="ratings"></div>
+            <span class="label">Mountain seed</span>
+            <div class="seed-row"><input id="seed-input" maxlength="24" spellcheck="false" aria-label="Mountain seed" /><button id="seed-random" class="btn small" type="button">New</button></div>
+            <span class="label">Your deck</span>
+            <div id="deck" class="deck"></div>
+            <button id="start" class="btn go" type="button">Ride the lift</button>
+          </section>
         </div>
-        <div class="hand-timer"><i id="hand-timer"></i></div>
+        <section class="panel buildings-panel">
+          <h2>Build up the lodge</h2>
+          <p class="muted">Bring cash, intel and scrap home to build. Buildings unlock cards and perks for every expedition after.</p>
+          <div id="buildings" class="buildings"></div>
+          <details class="howto" open>
+            <summary>How it plays</summary>
+            <ul>
+              <li>Your skier loops the mountain on their own: up the lift, down the trail, back to the lodge.</li>
+              <li><b>Place cards</b> from your hand to build it. Trail cards go on the run, roadside cards beside it, landscape cards on open snow. Enemy cards are dangerous but drop loot and more cards.</li>
+              <li><b>Steer the speed</b> with W and S. Tuck is fast, hard to hit and builds <span class="red">mult</span>, but your aim is poor. Snowplow is slow and accurate, but you're a sitting duck.</li>
+              <li>Fights happen on the move. Kills, grazes, air and supplies earn <b>chips</b>. Each lap cashes in as chips × <span class="red">mult</span> at the lodge.</li>
+              <li>At the lodge, ride again (enemies level up) or call it a day and keep everything. Bail out mid-lap and keep 60%; wipe out and keep 30%.</li>
+              <li>Every card you place fills the Baron meter. Fill it and the Avalanche Baron comes for you.</li>
+            </ul>
+          </details>
+        </section>
       </div>
-      <div id="chip-feed" class="chip-feed"></div>
+    </section>
 
-      <div id="speed-card" class="card hud-speed">
-        <span id="speed" class="value">0</span><span class="unit">km/h</span>
-        <div id="stance" class="stance cruise">Cruise</div>
+    <!-- An expedition. -->
+    <section id="run-screen" class="screen hidden">
+      <header id="topbar">
+        <div class="tb day">
+          <span class="label">Day <b id="day">1</b></span>
+          <div class="bar"><i id="day-fill"></i></div>
+        </div>
+        <div class="tb lap"><span class="label">Lap</span><b id="lap">1</b></div>
+        <div class="tb boss">
+          <span class="label">Baron alert <b id="boss-count">0/18</b></span>
+          <div class="bar red"><i id="boss-fill"></i></div>
+        </div>
+        <div class="tb res">
+          <span><span class="label">Cash</span><b id="run-cash">$0</b></span>
+          <span><span class="label">Intel</span><b id="run-intel">0</b></span>
+          <span><span class="label">Scrap</span><b id="run-scrap">0</b></span>
+        </div>
+        <div class="tb speed" role="group" aria-label="Game speed">
+          <button data-speed="0" title="Pause (Space)">II</button>
+          <button data-speed="1" title="Normal speed (1)">1×</button>
+          <button data-speed="2" title="Fast (2)">2×</button>
+          <button data-speed="3" title="Faster (3)">3×</button>
+        </div>
+        <button id="bail" class="btn small ghost" type="button" title="Leave now and keep 60%">Bail out</button>
+      </header>
+
+      <main id="board">
+        <div id="map-wrap">
+          <canvas id="map"></canvas>
+          <div id="map-fx"></div>
+          <div id="paused-tag" class="hidden">Paused · Space to ski</div>
+          <div id="banner" class="hidden"></div>
+        </div>
+        <footer id="hand-wrap">
+          <div id="card-tip" class="tip hidden"></div>
+          <div id="hand"></div>
+        </footer>
+      </main>
+
+      <aside id="side">
+        <section class="panel hero">
+          <div class="hp-row"><span class="label">HP</span><b id="hp-text">60/60</b></div>
+          <div class="hpbar"><i id="hp-fill"></i></div>
+          <div class="stance" role="group" aria-label="Stance">
+            <button data-stance="tuck" title="W">Tuck</button>
+            <button data-stance="cruise">Cruise</button>
+            <button data-stance="plow" title="S">Plow</button>
+          </div>
+          <p id="stance-text" class="stance-text"></p>
+          <dl id="stats" class="stats"></dl>
+        </section>
+        <section class="panel">
+          <h3>Gear</h3>
+          <div id="gear" class="gear"></div>
+          <h3>Pack <span class="muted">click to wear · right-click to scrap</span></h3>
+          <div id="inventory" class="inventory"></div>
+        </section>
+        <section class="panel lap-hand">
+          <h3>This lap</h3>
+          <div class="hand-score">
+            <div class="chips"><span class="label">Chips</span><b id="chips">0</b></div>
+            <div class="x">×</div>
+            <div class="mult"><span class="label">Mult</span><b id="mult">1.0</b></div>
+          </div>
+          <p id="combo" class="muted">Combo 0</p>
+        </section>
+      </aside>
+      <div id="item-tip" class="tip hidden"></div>
+    </section>
+
+    <!-- The lodge decision after each lap. -->
+    <div id="tally" class="overlay hidden">
+      <div class="panel modal">
+        <h2 id="tally-title">Lap 1 · at the lodge</h2>
+        <ul id="tally-lines" class="tally-lines"></ul>
+        <div class="tally-score">
+          <div class="chips"><span class="label">Chips</span><b id="tally-chips">0</b></div>
+          <div class="x">×</div>
+          <div class="mult"><span class="label">Mult</span><b id="tally-mult">1.0</b></div>
+          <div class="eq">=</div>
+          <div class="points"><span class="label">Cash</span><b id="tally-points">0</b></div>
+        </div>
+        <p id="tally-note" class="muted"></p>
+        <div class="modal-actions">
+          <button id="ride-again" class="btn go" type="button">Ride again <kbd>Enter</kbd></button>
+          <button id="call-it" class="btn" type="button">Call it a day · keep 100%</button>
+        </div>
       </div>
-      <div id="air" class="chip hud-air hidden">Air <b id="air-time">0.0s</b></div>
-
-      <div class="card hud-gear">
-        <div class="gear-row"><span class="label">Hits</span><div id="hp" class="hp"></div></div>
-        <div class="gear-row"><span class="label">Ammo</span><div id="ammo" class="ammo"></div></div>
-      </div>
-
-      <div id="lock" class="lock hidden"><i></i><i></i><i></i><i></i></div>
-      <div id="crosshair"><i></i></div>
-      <div id="hitmarker" class="hitmarker"></div>
-      <div id="bursts"></div>
-      <div id="popups"></div>
     </div>
 
-    <div id="flash"></div>
-    <div id="hurt"></div>
-
-    <section id="title" class="overlay">
-      <div class="card big">
-        <h1>Double <span>Black</span> Diamond</h1>
-        <p class="tag">You can't stop. Shoot your way down. Speed is the multiplier.</p>
-        <p class="touch-note">This prototype needs a keyboard and mouse. Open it on a computer to ski.</p>
-        <button id="start" class="go">Click to drop in</button>
-        <div class="controls">
-          <div><kbd>Mouse</kbd><span>Steer: your skis chase where you look</span></div>
-          <div><kbd>LMB</kbd><span>Shoot</span></div>
-          <div><kbd>RMB</kbd><span>Hold to aim: zoom, stronger aim assist, skis hold their line</span></div>
-          <div><kbd>W</kbd><span>Tuck: faster and harder to hit, but wobbly aim and weak assist</span></div>
-          <div><kbd>S</kbd><span>Snowplow: slow and steady aim, but you are an easy target</span></div>
-          <div><kbd>A</kbd><kbd>D</kbd><span>Steer with keys</span></div>
-          <div><kbd>Space</kbd><span>Pop a jump</span></div>
-          <div><kbd>R</kbd><kbd>N</kbd><span>Retry this mountain · new mountain</span></div>
-        </div>
-        <p class="rules">Kills, air, grazing trees and dodged bullets earn <b>chips</b>. Doing it fast builds the <b class="red">mult</b>. Keep scoring to grow the hand; get shot and you lose it.</p>
-        <p class="seedline">Mountain seed <b id="title-seed">------</b> · ` for the tuning panel</p>
-      </div>
-    </section>
-
-    <section id="paused" class="overlay hidden">
-      <div class="card">
-        <h2>Paused</h2>
-        <button class="go resume">Click to resume</button>
-        <p class="hint">R retry · N new mountain · ` tuning</p>
-      </div>
-    </section>
-
-    <section id="result" class="overlay hidden">
-      <div class="card big">
+    <!-- End of an expedition. -->
+    <div id="result" class="overlay hidden">
+      <div class="panel modal">
         <h2 id="result-title">Yard sale!</h2>
-        <p id="result-sub" class="tag"></p>
-        <div class="payout">
-          <span class="label">Payout</span>
-          <b id="payout">$0</b>
-          <span id="payout-note" class="note"></span>
-        </div>
-        <dl id="result-stats" class="stats"></dl>
-        <p class="bank">Bank <b id="bank">$0</b></p>
-        <button class="go again">Ski it again</button>
-        <p class="hint">Click or R to retry · N for a new mountain</p>
+        <p id="result-sub" class="muted"></p>
+        <div id="result-pay" class="result-pay"></div>
+        <dl id="result-stats" class="stats wide"></dl>
+        <p id="result-unlock" class="unlock hidden"></p>
+        <div class="modal-actions"><button id="to-lodge" class="btn go" type="button">Back to the lodge</button></div>
       </div>
-    </section>
-
-    <aside id="tuning" class="hidden"></aside>
+    </div>
 
     <script type="module" src="./src/main.ts"></script>
   </body>

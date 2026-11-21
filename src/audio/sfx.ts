@@ -1,8 +1,5 @@
-// Procedural sound: wind that rises with speed, ski hiss that turns to a scrape when you skid
-// or plow, and thumps for landings and wipeouts. Generated noise only, nothing to download.
-
-import { length } from '../sim/math';
-import type { PlayerState, SimEvent } from '../sim/player';
+// Procedural sound: wind that rises with speed, ski hiss, and slapstick effects for the
+// gunfights and the lodge. Generated noise and oscillators only, nothing to download.
 
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -12,7 +9,7 @@ export class Sfx {
   private skiGain!: GainNode;
   private skiFilter!: BiquadFilterNode;
   private noise!: AudioBuffer;
-  private volume = 0.7;
+  private volume = 0.6;
   private muted = false;
 
   /** Must be called from a user gesture (browsers block audio until then). */
@@ -62,52 +59,48 @@ export class Sfx {
     return this.muted;
   }
 
-  /** Continuous sounds follow the player every frame. */
-  update(p: PlayerState | null, active: boolean): void {
+  /**
+   * Ambience each frame: `speed` is 0..1.5 (how fast the skier is going), `scrape` is 0..1
+   * (snowplowing), and `active` is false at the lodge, when paused, or in menus.
+   */
+  ambient(speed: number, scrape: number, active: boolean): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    if (!p || !active) {
+    if (!active) {
       this.windGain.gain.setTargetAtTime(0, now, 0.2);
       this.skiGain.gain.setTargetAtTime(0, now, 0.1);
       return;
     }
-    const speed = length(p.vel);
-    const s = Math.min(speed / 45, 1.2);
-    const onSnow = p.airTime < 0.1 && p.status !== 'crashed';
-    this.windGain.gain.setTargetAtTime(0.05 + 0.5 * s ** 1.6, now, 0.15);
-    this.windFilter.frequency.setTargetAtTime(250 + 1500 * s * s, now, 0.15);
-    const scrape = p.skid * 1.4 + p.plow * 0.6 * Math.min(speed / 10, 1);
-    const ski = onSnow ? Math.min(0.06 + s * 0.16 + scrape * 0.35, 0.6) : 0;
-    this.skiGain.gain.setTargetAtTime(ski, now, 0.05);
-    this.skiFilter.frequency.setTargetAtTime(1300 + scrape * 1800 + s * 900, now, 0.08);
+    this.windGain.gain.setTargetAtTime(0.03 + 0.18 * speed ** 1.6, now, 0.2);
+    this.windFilter.frequency.setTargetAtTime(250 + 900 * speed * speed, now, 0.2);
+    this.skiGain.gain.setTargetAtTime(Math.min(0.03 + speed * 0.05 + scrape * 0.12, 0.25), now, 0.08);
+    this.skiFilter.frequency.setTargetAtTime(1300 + scrape * 1500 + speed * 600, now, 0.1);
   }
 
-  onEvent(e: SimEvent): void {
+  /** A card slapped onto the map. */
+  place(): void {
     if (!this.ctx) return;
-    switch (e.type) {
-      case 'land':
-        this.thump(Math.min(0.25 + e.impact * 0.06, 0.9), 90);
-        this.burst(0.12, Math.min(0.1 + e.impact * 0.03, 0.4), 900);
-        break;
-      case 'impact':
-        this.thump(Math.min(e.impact * 0.04, 0.5), 110);
-        break;
-      case 'jump':
-        this.burst(0.18, 0.15, 2400);
-        break;
-      case 'treeBump':
-        this.thump(0.5, 140);
-        this.burst(0.25, 0.3, 1600);
-        break;
-      case 'crash':
-        this.thump(1, 70);
-        this.burst(0.6, 0.6, 700);
-        for (let i = 0; i < 5; i++) this.click(0.1 + i * 0.09 + Math.random() * 0.05);
-        break;
-      case 'finish':
-        this.chime();
-        break;
-    }
+    this.thump(0.35, 160);
+    this.burst(0.12, 0.18, 2200);
+  }
+
+  /** A wipeout: a full yard sale. */
+  yardSale(): void {
+    if (!this.ctx) return;
+    this.thump(1, 70);
+    this.burst(0.6, 0.5, 700);
+    for (let i = 0; i < 5; i++) this.click(0.1 + i * 0.09 + Math.random() * 0.05);
+  }
+
+  /** The boss arrives. */
+  alarm(): void {
+    if (!this.ctx) return;
+    for (let i = 0; i < 4; i++) setTimeout(() => this.tone('square', 880, 660, 0.18, 0.08), i * 220);
+  }
+
+  /** Back at the lodge, or a boss beaten. */
+  fanfare(): void {
+    this.chime();
   }
 
   // --- Gunfight and scoring sounds (slapstick on purpose) -----------------------------------
@@ -279,7 +272,7 @@ export class Sfx {
   }
 
   /** A cheap two-note surf-twang chime for reaching base camp. */
-  private chime(): void {
+  chime(): void {
     const ctx = this.ctx!;
     const t = ctx.currentTime;
     [392, 523.25, 659.25, 783.99].forEach((freq, i) => {

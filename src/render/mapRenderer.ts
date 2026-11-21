@@ -1,0 +1,509 @@
+// Draws the mountain as an old piste map in pixel art: contour lines on white snow, the groomed
+// trail, the chairlift, every card you have placed, and the skier and enemies on top. Everything
+// is drawn at art resolution (16px tiles) and scaled up by a whole number so pixels stay crisp.
+
+import type { CardId, TileState } from '../game/cards';
+import { MAP_H, MAP_W, TILE } from '../game/constants';
+import type { Enemy } from '../game/enemies';
+import { pathPos, tileAt, type Dir, type LoopMap } from '../game/map';
+import type { Run } from '../game/run';
+import { hashSeed } from '../game/rng';
+import { Fx, line } from './fx';
+import {
+  BACKDROP,
+  CONTOUR,
+  CONTOUR_MAJOR,
+  DARK,
+  INK,
+  LIFT_CLEAR,
+  LIGHT,
+  MID,
+  PAPER,
+  RED,
+  SHADE,
+  SNOW,
+  SNOW_FLECK,
+  TRAIL,
+  TRAIL_EDGE,
+  TRAIL_LINE,
+} from './palette';
+import { Atlas, type SpriteName } from './sprites';
+
+export const ART_W = MAP_W * TILE;
+export const ART_H = MAP_H * TILE;
+
+const TILE_SPRITES: Record<Exclude<CardId, 'avalanche'>, SpriteName> = {
+  patrol: 'patrol',
+  moguls: 'moguls',
+  kicker: 'kicker',
+  ice: 'ice',
+  cabin: 'cabin',
+  sniper: 'sniperNest',
+  garage: 'garage',
+  cache: 'cache',
+  safehouse: 'safehouse',
+  pines: 'pines',
+  boulder: 'boulder',
+  peak: 'peak',
+  powder: 'powder',
+};
+
+export const spriteForCard = (card: CardId): SpriteName => (card === 'avalanche' ? 'peak' : TILE_SPRITES[card]);
+
+const ROTATION: Record<Dir, number> = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 };
+
+function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  return [c, ctx];
+}
+
+export interface Selection {
+  card: CardId;
+  hover: { x: number; y: number } | null;
+}
+
+export interface FrameView {
+  /** Skier's position along the loop, interpolated between ticks. */
+  heroS: number;
+  /** Interpolated chaser positions by enemy id. */
+  chasers: Map<number, { x: number; y: number }>;
+  time: number;
+  dt: number;
+  selection: Selection | null;
+  paused: boolean;
+}
+
+export class MapRenderer {
+  readonly atlas = new Atlas();
+  readonly fx = new Fx(ART_W, ART_H);
+  private readonly ctx: CanvasRenderingContext2D;
+  private readonly buffer: HTMLCanvasElement;
+  private readonly bctx: CanvasRenderingContext2D;
+  private background: HTMLCanvasElement | null = null;
+  private pathLayer: HTMLCanvasElement | null = null;
+  private tileLayer: HTMLCanvasElement | null = null;
+  private tilesKey = '';
+  private map: LoopMap | null = null;
+  /** Device pixels per art pixel, and where the map sits on the canvas. */
+  scale = 1;
+  ox = 0;
+  oy = 0;
+  dpr = 1;
+  shake = 0;
+
+  constructor(readonly canvas: HTMLCanvasElement) {
+    this.ctx = canvas.getContext('2d')!;
+    [this.buffer, this.bctx] = canvas2(ART_W, ART_H);
+  }
+
+  resize(): void {
+    this.dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const w = Math.max(1, Math.round(this.canvas.clientWidth * this.dpr));
+    const h = Math.max(1, Math.round(this.canvas.clientHeight * this.dpr));
+    this.canvas.width = w;
+    this.canvas.height = h;
+    const fit = Math.min((w - 16 * this.dpr) / ART_W, (h - 16 * this.dpr) / ART_H);
+    this.scale = fit >= 1 ? Math.floor(fit) : fit;
+    this.ox = Math.round((w - ART_W * this.scale) / 2);
+    this.oy = Math.round((h - ART_H * this.scale) / 2);
+  }
+
+  setRun(run: Run): void {
+    this.map = run.map;
+    this.background = buildBackground(run.map);
+    this.pathLayer = this.buildPath(run.map);
+    this.tilesKey = '';
+    this.fx.clear();
+  }
+
+  /** Map tile under a point in CSS pixels, or null. */
+  tileAtCss(cssX: number, cssY: number): { x: number; y: number } | null {
+    const x = Math.floor((cssX * this.dpr - this.ox) / (this.scale * TILE));
+    const y = Math.floor((cssY * this.dpr - this.oy) / (this.scale * TILE));
+    return x >= 0 && y >= 0 && x < MAP_W && y < MAP_H ? { x, y } : null;
+  }
+
+  /** CSS pixel position of a point given in tiles. */
+  cssOf(tx: number, ty: number): { x: number; y: number } {
+    return { x: (this.ox + tx * TILE * this.scale) / this.dpr, y: (this.oy + ty * TILE * this.scale) / this.dpr };
+  }
+
+  get tileCss(): number {
+    return (TILE * this.scale) / this.dpr;
+  }
+
+  render(run: Run, view: FrameView): void {
+    const b = this.bctx;
+    const map = run.map;
+    if (!this.background || this.map !== map) this.setRun(run);
+    this.fx.update(view.dt);
+
+    b.drawImage(this.background!, 0, 0);
+    b.drawImage(this.pathLayer!, 0, 0);
+    const key = run.state.tiles.map((t) => (t ? `${t.card}${t.variant ?? ''}` : '')).join(',');
+    if (key !== this.tilesKey) {
+      this.tileLayer = this.buildTiles(run);
+      this.tilesKey = key;
+    }
+    b.drawImage(this.tileLayer!, 0, 0);
+    if (view.selection) this.drawSelection(run, view.selection);
+    this.drawChairs(map, view);
+
+    // Entities, back to front.
+    const actors: { y: number; draw: () => void }[] = [];
+    for (const e of run.state.enemies) {
+      const pos = e.s >= 0 ? (view.chasers.get(e.id) ?? e) : e;
+      actors.push({ y: pos.y, draw: () => this.drawEnemy(run, e, pos.x, pos.y, view.time) });
+    }
+    const hp = pathPos(map, view.heroS);
+    actors.push({ y: hp.y + 0.01, draw: () => this.drawHero(run, view, hp.x, hp.y) });
+    actors.sort((a, c) => a.y - c.y);
+    for (const a of actors) a.draw();
+
+    this.fx.draw(b);
+    this.fx.drawSnow(b);
+
+    // To the screen, scaled up and framed in ink.
+    const ctx = this.ctx;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = BACKDROP;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.shake = Math.max(0, this.shake - view.dt * 3);
+    const sx = this.shake ? Math.round((Math.random() - 0.5) * this.shake * 10 * this.dpr) : 0;
+    const sy = this.shake ? Math.round((Math.random() - 0.5) * this.shake * 10 * this.dpr) : 0;
+    const w = ART_W * this.scale;
+    const h = ART_H * this.scale;
+    const border = Math.max(2, Math.round(3 * this.dpr));
+    ctx.fillStyle = INK;
+    ctx.fillRect(this.ox - border + sx + border * 2, this.oy - border + sy + border * 2, w + border * 2, h + border * 2);
+    ctx.fillRect(this.ox - border + sx, this.oy - border + sy, w + border * 2, h + border * 2);
+    ctx.drawImage(this.buffer, this.ox + sx, this.oy + sy, w, h);
+    if (view.paused) {
+      ctx.fillStyle = 'rgba(20,20,20,0.18)';
+      ctx.fillRect(this.ox + sx, this.oy + sy, w, h);
+    }
+  }
+
+  // --- Static layers ------------------------------------------------------------------------
+
+  private buildPath(map: LoopMap): HTMLCanvasElement {
+    const [c, ctx] = canvas(ART_W, ART_H);
+    const mask = new Uint8Array(ART_W * ART_H);
+    const fill = (x0: number, y0: number, w: number, h: number, v: number) => {
+      for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) mask[y * ART_W + x] = v;
+    };
+    const opposite: Record<Dir, Dir> = { up: 'down', down: 'up', left: 'right', right: 'left' };
+    const n = map.path.length;
+    map.path.forEach((p, i) => {
+      if (p.kind === 'lift') return;
+      const x0 = p.x * TILE;
+      const y0 = p.y * TILE;
+      const v = p.dir === 'down' || p.dir === 'up' ? 1 : 2;
+      fill(x0 + 3, y0 + 3, 10, 10, v);
+      const sides: [Dir, number][] = [
+        [p.dir, (i + 1) % n],
+        [opposite[p.from], (i - 1 + n) % n],
+      ];
+      for (const [side, j] of sides) {
+        if (map.path[j].kind === 'lift') continue;
+        if (side === 'right') fill(x0 + 8, y0 + 3, 8, 10, v);
+        if (side === 'left') fill(x0, y0 + 3, 8, 10, v);
+        if (side === 'down') fill(x0 + 3, y0 + 8, 10, 8, v);
+        if (side === 'up') fill(x0 + 3, y0, 10, 8, v);
+      }
+    });
+
+    // The lift line: a cleared strip with two cables and towers.
+    const lodge = map.path[0];
+    const top = map.path[map.summit];
+    const lx = lodge.x * TILE;
+    ctx.fillStyle = LIFT_CLEAR;
+    ctx.fillRect(lx + 2, top.y * TILE + 8, 12, (lodge.y - top.y) * TILE);
+
+    // Trail pixels: edges, a soft shadow, and groomer corduroy along the direction of travel.
+    const img = ctx.getImageData(0, 0, ART_W, ART_H);
+    const put = (i: number, hex: string) => {
+      img.data[i * 4] = parseInt(hex.slice(1, 3), 16);
+      img.data[i * 4 + 1] = parseInt(hex.slice(3, 5), 16);
+      img.data[i * 4 + 2] = parseInt(hex.slice(5, 7), 16);
+      img.data[i * 4 + 3] = 255;
+    };
+    for (let y = 0; y < ART_H; y++) {
+      for (let x = 0; x < ART_W; x++) {
+        const i = y * ART_W + x;
+        const v = mask[i];
+        if (!v) {
+          const lit = (x > 0 && mask[i - 1]) || (y > 0 && mask[i - ART_W]);
+          if (lit) put(i, SHADE);
+          continue;
+        }
+        const edge = x === 0 || y === 0 || x === ART_W - 1 || y === ART_H - 1 || !mask[i - 1] || !mask[i + 1] || !mask[i - ART_W] || !mask[i + ART_W];
+        if (edge) put(i, TRAIL_EDGE);
+        else put(i, (v === 1 ? x % 3 === 0 : y % 3 === 0) ? TRAIL_LINE : TRAIL);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+
+    ctx.fillStyle = INK;
+    const cableTop = top.y * TILE + 8;
+    const cableBottom = lodge.y * TILE + 4;
+    ctx.fillRect(lx + 5, cableTop, 1, cableBottom - cableTop);
+    ctx.fillRect(lx + 10, cableTop, 1, cableBottom - cableTop);
+    for (let y = top.y + 1; y < lodge.y; y += 2) {
+      ctx.fillStyle = DARK;
+      ctx.fillRect(lx + 7, y * TILE + 5, 2, 9);
+      ctx.fillStyle = INK;
+      ctx.fillRect(lx + 3, y * TILE + 5, 10, 1);
+      ctx.fillRect(lx + 6, y * TILE + 14, 4, 1);
+    }
+    // Top station and the summit flag.
+    ctx.fillStyle = INK;
+    ctx.fillRect(lx + 2, top.y * TILE + 4, 12, 5);
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(lx + 3, top.y * TILE + 5, 10, 2);
+    ctx.drawImage(this.atlas.get('flag'), lx + 10, top.y * TILE - 4);
+    ctx.drawImage(this.atlas.get('lodge'), lx, lodge.y * TILE + 1);
+    return c;
+  }
+
+  private buildTiles(run: Run): HTMLCanvasElement {
+    const [c, ctx] = canvas(ART_W, ART_H);
+    const tiles = run.state.tiles;
+    tiles.forEach((t, i) => {
+      if (!t || t.variant === 'dbdPart') return;
+      const x = (i % MAP_W) * TILE;
+      const y = Math.floor(i / MAP_W) * TILE;
+      if (t.variant === 'dbd') {
+        drawDoubleBlack(ctx, x - TILE, y - TILE);
+        return;
+      }
+      this.drawTile(ctx, run, t, x, y, i);
+    });
+    return c;
+  }
+
+  private drawTile(ctx: CanvasRenderingContext2D, run: Run, t: TileState, x: number, y: number, i: number): void {
+    const sprite = this.atlas.get(spriteForCard(t.card));
+    const p = run.map.path[run.map.index[i]];
+    if (p && (t.card === 'kicker' || t.card === 'patrol' || t.card === 'ice')) {
+      // Trail features face the direction of travel.
+      const turn = t.card === 'patrol' ? (p.dir === 'left' || p.dir === 'right' ? Math.PI / 2 : 0) : ROTATION[p.dir] + Math.PI;
+      ctx.save();
+      ctx.translate(x + 8, y + 8);
+      ctx.rotate(turn);
+      ctx.drawImage(sprite, -8, -8);
+      ctx.restore();
+      return;
+    }
+    ctx.drawImage(sprite, x, y);
+  }
+
+  // --- Dynamic ------------------------------------------------------------------------------
+
+  private drawSelection(run: Run, sel: Selection): void {
+    const b = this.bctx;
+    for (let y = 0; y < MAP_H; y++) {
+      for (let x = 0; x < MAP_W; x++) {
+        if (!run.canPlace(sel.card, x, y)) continue;
+        b.fillStyle = 'rgba(20,20,20,0.55)';
+        for (let k = 1; k < 15; k += 2) {
+          b.fillRect(x * TILE + k, y * TILE + 1, 1, 1);
+          b.fillRect(x * TILE + k, y * TILE + 14, 1, 1);
+          b.fillRect(x * TILE + 1, y * TILE + k, 1, 1);
+          b.fillRect(x * TILE + 14, y * TILE + k, 1, 1);
+        }
+      }
+    }
+    const h = sel.hover;
+    if (!h) return;
+    const ok = run.canPlace(sel.card, h.x, h.y);
+    if (ok && sel.card !== 'avalanche') {
+      b.globalAlpha = 0.65;
+      b.drawImage(this.atlas.get(spriteForCard(sel.card)), h.x * TILE, h.y * TILE);
+      b.globalAlpha = 1;
+    }
+    b.fillStyle = ok ? RED : MID;
+    b.fillRect(h.x * TILE, h.y * TILE, TILE, 1);
+    b.fillRect(h.x * TILE, h.y * TILE + 15, TILE, 1);
+    b.fillRect(h.x * TILE, h.y * TILE, 1, TILE);
+    b.fillRect(h.x * TILE + 15, h.y * TILE, 1, TILE);
+  }
+
+  private drawChairs(map: LoopMap, view: FrameView): void {
+    const b = this.bctx;
+    const chair = this.atlas.get('chair');
+    const lx = map.path[0].x * TILE;
+    const top = map.path[map.summit].y * TILE + 8;
+    const bottom = map.path[0].y * TILE + 2;
+    const off = (view.time * 14.4) % 16;
+    const heroOnLift = map.path[tileAt(map, view.heroS)].kind === 'lift';
+    const heroY = pathPos(map, view.heroS).y * TILE;
+    for (let y = bottom - off; y > top + 2; y -= 16) {
+      if (heroOnLift && Math.abs(y - heroY) < 12) continue;
+      b.drawImage(chair, lx + 2, Math.round(y) - 2);
+    }
+    for (let y = top + off; y < bottom - 4; y += 16) b.drawImage(chair, lx + 7, Math.round(y) - 2);
+  }
+
+  private drawEnemy(run: Run, e: Enemy, x: number, y: number, time: number): void {
+    const b = this.bctx;
+    const px = x * TILE;
+    const py = y * TILE;
+    let name: SpriteName = e.kind === 'snowmobile' ? 'snowmobile' : e.kind;
+    let flip = false;
+    if (e.kind === 'snowmobile' || e.kind === 'baron') {
+      const dir = run.map.path[tileAt(run.map, e.s)].dir;
+      flip = dir === 'left';
+    }
+    if (e.kind === 'sniper') name = 'sniper';
+    const sprite = this.atlas.get(name, flip);
+    const big = e.kind === 'baron' ? 2 : 1;
+    const w = sprite.width * big;
+    const h = sprite.height * big;
+    const bob = e.s < 0 && e.kind !== 'sniper' ? Math.floor(time * 2 + e.id * 0.37) % 2 : 0;
+    const left = Math.round(px - w / 2);
+    const topY = Math.round(e.kind === 'sniper' ? py - 11 : py - h + 5) - bob;
+    if (e.kind !== 'sniper') {
+      b.fillStyle = 'rgba(20,20,20,0.18)';
+      b.fillRect(Math.round(px - w / 3), Math.round(py + 4), Math.round((w * 2) / 3), 2);
+    }
+    b.drawImage(sprite, left, topY, w, h);
+    // Muzzle flash just after firing.
+    const since = this.fx.fired.get(e.id);
+    if (since !== undefined && since < 0.12) {
+      b.fillStyle = RED;
+      const fx = flip ? left - 1 : left + w;
+      b.fillRect(fx - 1, topY + Math.round(h * 0.68), 3, 2);
+    }
+    if (e.hp < e.maxHp) {
+      const bw = e.kind === 'baron' ? 24 : 12;
+      const bx = Math.round(px - bw / 2);
+      const by = topY - 3;
+      b.fillStyle = INK;
+      b.fillRect(bx - 1, by - 1, bw + 2, 4);
+      b.fillStyle = PAPER;
+      b.fillRect(bx, by, bw, 2);
+      b.fillStyle = RED;
+      b.fillRect(bx, by, Math.max(1, Math.round((bw * e.hp) / e.maxHp)), 2);
+    }
+  }
+
+  private drawHero(run: Run, view: FrameView, x: number, y: number): void {
+    const b = this.bctx;
+    const map = run.map;
+    const hero = run.state.hero;
+    const p = map.path[tileAt(map, view.heroS)];
+    const px = Math.round(x * TILE);
+    const py = Math.round(y * TILE);
+    const moving = run.state.status === 'riding' && !view.paused;
+    if (p.kind === 'lift') {
+      b.drawImage(this.atlas.get('heroLift'), px - 8 - 3, py - 12);
+      return;
+    }
+    let name: SpriteName = 'heroDown';
+    let flip = false;
+    if (p.dir === 'left' || p.dir === 'right') {
+      name = hero.stance === 'tuck' ? 'heroSideTuck' : 'heroSide';
+      flip = p.dir === 'left';
+    } else if (hero.stance === 'tuck') name = 'heroDownTuck';
+    else if (hero.stance === 'plow') name = 'heroDownPlow';
+    const air = hero.airborne ? 5 : 0;
+    const bob = moving && !air ? Math.floor(view.time * 8) % 2 : 0;
+
+    // Shadow, speed lines for a tuck, spray for a plow.
+    b.fillStyle = 'rgba(20,20,20,0.2)';
+    b.fillRect(px - 4, py + 3, 8, 2);
+    if (moving && hero.stance === 'tuck') {
+      const back = p.dir === 'down' ? [0, -1] : p.dir === 'right' ? [-1, 0] : [1, 0];
+      for (let k = 0; k < 3; k++) {
+        const len = 3 + ((Math.floor(view.time * 20) + k) % 3);
+        const ox = back[0] * (9 + k * 2) + (back[1] ? (k - 1) * 4 : 0);
+        const oy = back[1] * (12 + k * 2) + (back[0] ? (k - 1) * 4 - 4 : 0);
+        line(b, px + ox, py + oy, px + ox + back[0] * len, py + oy + back[1] * len, LIGHT);
+      }
+    }
+    if (moving && hero.stance === 'plow') {
+      b.fillStyle = Math.floor(view.time * 12) % 2 ? PAPER : LIGHT;
+      b.fillRect(px - 5 + (Math.floor(view.time * 17) % 3), py + 2, 1, 1);
+      b.fillRect(px + 4 - (Math.floor(view.time * 13) % 3), py + 3, 1, 1);
+    }
+    const blink = this.fx.heroHit > 0 && Math.floor(this.fx.heroHit * 20) % 2 === 0;
+    if (!blink) b.drawImage(this.atlas.get(name, flip), px - 8, py - 13 - air - bob);
+  }
+}
+
+function canvas2(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  return canvas(w, h);
+}
+
+/** Snow with contour lines: a vintage piste map, unique to the seed. */
+function buildBackground(map: LoopMap): HTMLCanvasElement {
+  const [c, ctx] = canvas(ART_W, ART_H);
+  const img = ctx.createImageData(ART_W, ART_H);
+  const [a, b2, c2, d] = hashSeed(`bg:${map.seed}`).map((v) => (v / 4294967296) * Math.PI * 2);
+  const top = map.path[map.summit];
+  const sx = top.x * TILE + 8;
+  const sy = top.y * TILE + 8;
+  const height = (x: number, y: number) =>
+    ((ART_H - y) / ART_H) * 7 +
+    1.2 * Math.sin(x * 0.034 + a) * Math.sin(y * 0.05 + b2) +
+    0.6 * Math.sin(x * 0.09 + y * 0.045 + c2) +
+    2.4 * Math.exp(-((x - sx) ** 2 + (y - sy) ** 2) / 2600) +
+    0.4 * Math.sin(x * 0.2 + d) * Math.sin(y * 0.17);
+  const step = 0.5;
+  const level = new Int16Array(ART_W * ART_H);
+  for (let y = 0; y < ART_H; y++) for (let x = 0; x < ART_W; x++) level[y * ART_W + x] = Math.floor(height(x, y) / step);
+  const rgb = (hex: string) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+  const snow = rgb(SNOW);
+  const fleck = rgb(SNOW_FLECK);
+  const minor = rgb(CONTOUR);
+  const major = rgb(CONTOUR_MAJOR);
+  for (let y = 0; y < ART_H; y++) {
+    for (let x = 0; x < ART_W; x++) {
+      const i = y * ART_W + x;
+      const lv = level[i];
+      const contour = (x < ART_W - 1 && level[i + 1] !== lv) || (y < ART_H - 1 && level[i + ART_W] !== lv);
+      const noise = ((x * 73856093) ^ (y * 19349663) ^ (a * 1000)) >>> 0;
+      const col = contour ? (lv % 4 === 0 ? major : minor) : noise % 29 === 0 ? fleck : snow;
+      img.data.set([col[0], col[1], col[2], 255], i * 4);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/** A 3x3 of peaks becomes one big mountain with a double-black-diamond sign. */
+function drawDoubleBlack(ctx: CanvasRenderingContext2D, x0: number, y0: number): void {
+  const apex = 24;
+  for (let r = 3; r <= 42; r++) {
+    const half = ((r - 3) / 39) * 22;
+    const xl = Math.round(apex - half);
+    const xr = Math.round(apex + half);
+    for (let x = xl; x <= xr; x++) {
+      let col = x < apex - (r - 3) * 0.12 ? MID : DARK;
+      const snowLine = 15 + ((x * 7) % 4);
+      if (r < snowLine) col = x < apex ? PAPER : SHADE;
+      if (x === xl || x === xr) col = INK;
+      ctx.fillStyle = col;
+      ctx.fillRect(x0 + x, y0 + r, 1, 1);
+    }
+  }
+  ctx.fillStyle = INK;
+  ctx.fillRect(x0 + 1, y0 + 43, 46, 1);
+  ctx.fillStyle = LIGHT;
+  ctx.fillRect(x0 + 3, y0 + 44, 42, 1);
+  // The sign: two black diamonds on a white plate.
+  ctx.fillStyle = INK;
+  ctx.fillRect(x0 + 15, y0 + 30, 18, 9);
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(x0 + 16, y0 + 31, 16, 7);
+  ctx.fillStyle = INK;
+  for (const cx of [20, 28]) {
+    for (let k = 0; k < 3; k++) ctx.fillRect(x0 + cx - k, y0 + 32 + k, 1 + k * 2, 1);
+    for (let k = 0; k < 2; k++) ctx.fillRect(x0 + cx - 1 + k, y0 + 35 + k, 3 - k * 2, 1);
+  }
+}

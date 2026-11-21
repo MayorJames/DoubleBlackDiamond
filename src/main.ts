@@ -1,9 +1,6 @@
 import './style.css';
-import { Game } from './client/game';
+import { App } from './app/app';
 
-const canvas = document.getElementById('game');
-if (!(canvas instanceof HTMLCanvasElement)) throw new Error('#game canvas missing');
-
-const game = new Game(canvas);
-// Handy for poking at the run from the browser console while tuning.
-(window as unknown as { dbd: Game }).dbd = game;
+const app = new App();
+// Handy for poking at a run from the browser console.
+(window as unknown as { dbd: App }).dbd = app;
