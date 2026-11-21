@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A first-person spy shooter where you never stop skiing." />
+    <title>Double Black Diamond</title>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="card hud-time"><span class="label">Time</span><span id="time" class="value">0:00.00</span></div>
+      <div class="hud-progress">
+        <div class="track"><div id="progress-fill" class="fill"></div><div id="progress-skier" class="skier"></div></div>
+        <div id="togo" class="togo">1300 m to base camp</div>
+      </div>
+      <div class="chip hud-seed">Seed <b id="seed">------</b></div>
+
+      <div id="speed-card" class="card hud-speed">
+        <span id="speed" class="value">0</span><span class="unit">km/h</span>
+        <div id="stance" class="stance cruise">Cruise</div>
+      </div>
+      <div id="air" class="chip hud-air hidden">Air <b id="air-time">0.0s</b></div>
+      <div class="hud-keys">
+        <span><kbd>Mouse</kbd> steer &amp; look</span>
+        <span><kbd>W</kbd> tuck</span>
+        <span><kbd>S</kbd> snowplow</span>
+        <span><kbd>Space</kbd> jump</span>
+        <span><kbd>RMB</kbd> free-look</span>
+      </div>
+      <div id="crosshair"><i></i></div>
+      <div id="popups"></div>
+    </div>
+
+    <div id="flash"></div>
+
+    <section id="title" class="overlay">
+      <div class="card big">
+        <h1>Double <span>Black</span> Diamond</h1>
+        <p class="tag">You can't stop. Phase 1: the feel of the slope.</p>
+        <button id="start" class="go">Click to drop in</button>
+        <div class="controls">
+          <div><kbd>Mouse</kbd><span>Steer — your skis chase where you look</span></div>
+          <div><kbd>W</kbd><span>Tuck: faster, wobblier aim, wide turns</span></div>
+          <div><kbd>S</kbd><span>Snowplow: slows you, steadies your aim</span></div>
+          <div><kbd>A</kbd><kbd>D</kbd><span>Steer with keys</span></div>
+          <div><kbd>Space</kbd><span>Pop a jump</span></div>
+          <div><kbd>RMB</kbd><span>Hold to look around without steering</span></div>
+          <div><kbd>R</kbd><kbd>N</kbd><span>Retry this mountain · new mountain</span></div>
+          <div><kbd>`</kbd><span>Tuning panel</span></div>
+        </div>
+        <p class="seedline">Mountain seed <b id="title-seed">------</b></p>
+      </div>
+    </section>
+
+    <section id="paused" class="overlay hidden">
+      <div class="card">
+        <h2>Paused</h2>
+        <button class="go resume">Click to resume</button>
+        <p class="hint">R retry · N new mountain · ` tuning</p>
+      </div>
+    </section>
+
+    <section id="result" class="overlay hidden">
+      <div class="card big">
+        <h2 id="result-title">Yard sale!</h2>
+        <p id="result-sub" class="tag"></p>
+        <dl id="result-stats" class="stats"></dl>
+        <button class="go again">Ski it again</button>
+        <p class="hint">Click or R to retry · N for a new mountain</p>
+      </div>
+    </section>
+
+    <aside id="tuning" class="hidden"></aside>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
