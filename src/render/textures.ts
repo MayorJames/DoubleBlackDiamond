@@ -41,9 +41,9 @@ export function makeSnowTexture(): THREE.CanvasTexture {
       let v = 241 + n * 14;
       if (x % 4 === 0) v -= 7; // corduroy runs downhill
       if (n > 0.97) v -= 20; // occasional darker fleck
-      img.data[i] = v - 6;
-      img.data[i + 1] = v - 2;
-      img.data[i + 2] = Math.min(255, v + 6);
+      img.data[i] = v;
+      img.data[i + 1] = v;
+      img.data[i + 2] = v;
       img.data[i + 3] = 255;
     }
   }
@@ -51,19 +51,19 @@ export function makeSnowTexture(): THREE.CanvasTexture {
   return pixelTexture(c, true);
 }
 
-/** A pixel-art pine with snow on its boughs, drawn on a transparent background. */
+/** A pixel-art pine in black ink with snow on its boughs, on a transparent background. */
 export function makePineTexture(): THREE.CanvasTexture {
   const w = 32;
   const h = 64;
   const [c, ctx] = canvas(w, h);
-  ctx.fillStyle = '#5b3a24';
+  ctx.fillStyle = '#0d0d0d';
   ctx.fillRect(14, 54, 4, 10);
   const tiers = 5;
   for (let t = 0; t < tiers; t++) {
     const bottom = 56 - t * 10;
     const top = bottom - 18;
     const half = 15 - t * 2.6;
-    ctx.fillStyle = t % 2 ? '#24503a' : '#2b5e43';
+    ctx.fillStyle = t % 2 ? '#151515' : '#1f1f1f';
     ctx.beginPath();
     ctx.moveTo(16, top);
     ctx.lineTo(16 + half, bottom);
@@ -71,11 +71,11 @@ export function makePineTexture(): THREE.CanvasTexture {
     ctx.closePath();
     ctx.fill();
     // Snow lying along the bottom edge and the left flank of each tier.
-    ctx.fillStyle = '#eef4ff';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(Math.round(16 - half), bottom - 2, Math.round(half * 1.3), 2);
     ctx.fillRect(Math.round(16 - half * 0.45), Math.round((top + bottom) / 2), 3, 2);
   }
-  ctx.fillStyle = '#f4f8ff';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(15, 1, 2, 3);
   return pixelTexture(c, false);
 }

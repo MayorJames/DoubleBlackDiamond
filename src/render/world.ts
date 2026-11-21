@@ -10,7 +10,8 @@ import { buildTerrain } from './terrain';
 import { makeFlakeTexture, makePineTexture, makeSnowTexture } from './textures';
 import { buildTrees } from './trees';
 
-const FOG = '#c8d5e8';
+import { FOG } from './palette';
+
 
 export class WorldRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -31,8 +32,8 @@ export class WorldRenderer {
     this.scene.fog = new THREE.Fog(FOG, 30, 300);
 
     // A low side sun so bumps and moguls read through flat shading.
-    this.scene.add(new THREE.HemisphereLight('#e4edff', '#7d8aa6', 1.8));
-    const sun = new THREE.DirectionalLight('#fff1dc', 2.3);
+    this.scene.add(new THREE.HemisphereLight('#ffffff', '#858585', 1.8));
+    const sun = new THREE.DirectionalLight('#ffffff', 2.3);
     sun.position.set(-1, 0.55, 0.25);
     this.scene.add(sun);
 

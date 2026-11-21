@@ -1,13 +1,16 @@
 // The simulation: a seeded run state advanced in fixed ticks by player inputs, and nothing else.
 // No DOM, no rendering, no clocks. Multiplayer later is just a longer players list.
 
+import { bowlGuards, stepWeapon } from './combat';
 import { DT } from './constants';
 import { Course, DEFAULT_COURSE_LENGTH } from './course';
+import { spawnGuards, stepGuards, type GuardState } from './guards';
 import { createPlayer, NEUTRAL_INPUT, stepPlayer, type InputFrame, type PlayerState, type SimEvent } from './player';
 import { hashSeed, Rng, type RngState } from './rng';
+import { stepScore } from './scoring';
 import { cloneTuning, type Tuning } from './tuning';
 
-export const RUN_STATE_VERSION = 1;
+export const RUN_STATE_VERSION = 2;
 
 /** Everything needed to resume a run exactly. Plain JSON. */
 export interface RunState {
@@ -18,6 +21,7 @@ export interface RunState {
   rng: RngState;
   tuning: Tuning;
   players: PlayerState[];
+  guards: GuardState[];
 }
 
 export interface SimOptions {
@@ -59,8 +63,10 @@ export class Sim {
       rng: hashSeed(`run:${options.seed}`),
       tuning,
       players: [],
+      guards: [],
     };
     const sim = new Sim(state, options.course);
+    state.guards = spawnGuards(sim.course);
     const count = Math.max(1, options.players ?? 1);
     for (let i = 0; i < count; i++) state.players.push(createPlayer(i, count, sim.course, tuning, sim.rng));
     return sim;
@@ -78,9 +84,22 @@ export class Sim {
 
   /** Advance one fixed tick. `inputs[i]` drives `players[i]`; missing inputs are neutral. */
   step(inputs: readonly InputFrame[]): void {
-    const ctx = { course: this.course, tuning: this.state.tuning, tick: this.state.tick, emit: this.emit };
-    const players = this.state.players;
+    const { players, guards } = this.state;
+    const ctx = {
+      course: this.course,
+      tuning: this.state.tuning,
+      tick: this.state.tick,
+      rng: this.rng,
+      guards,
+      emit: this.emit,
+    };
     for (let i = 0; i < players.length; i++) stepPlayer(players[i], inputs[i] ?? NEUTRAL_INPUT, ctx);
+    for (let i = 0; i < players.length; i++) {
+      stepWeapon(players[i], inputs[i] ?? NEUTRAL_INPUT, ctx);
+      bowlGuards(players[i], ctx);
+    }
+    stepGuards(guards, players, ctx);
+    for (const p of players) stepScore(p, ctx);
     this.state.tick++;
   }
 
@@ -101,5 +120,9 @@ export class Sim {
 
   get players(): readonly PlayerState[] {
     return this.state.players;
+  }
+
+  get guards(): readonly GuardState[] {
+    return this.state.guards;
   }
 }

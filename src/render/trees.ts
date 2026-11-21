@@ -50,7 +50,7 @@ export function buildTrees(course: Course, pineTexture: THREE.Texture): THREE.Gr
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
-  const dark = new THREE.Color('#9fb8a8');
+  const dark = new THREE.Color('#9a9a9a');
   const white = new THREE.Color('#ffffff');
   const tint = new THREE.Color();
 

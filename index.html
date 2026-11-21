@@ -10,48 +10,65 @@
     <canvas id="game"></canvas>
 
     <div id="hud" class="hidden">
-      <div class="card hud-time"><span class="label">Time</span><span id="time" class="value">0:00.00</span></div>
+      <div class="hud-score">
+        <div id="score-card" class="card score-card"><span class="label">Score</span><span id="score" class="value">0</span></div>
+        <div class="chip time-chip"><span id="time">0:00.00</span></div>
+      </div>
       <div class="hud-progress">
         <div class="track"><div id="progress-fill" class="fill"></div><div id="progress-skier" class="skier"></div></div>
         <div id="togo" class="togo">1300 m to base camp</div>
       </div>
       <div class="chip hud-seed">Seed <b id="seed">------</b></div>
 
+      <div id="hand" class="hand hidden">
+        <div class="hand-row">
+          <div class="hand-chips"><span class="label">Chips</span><b id="hand-chips">0</b></div>
+          <div class="hand-x">×</div>
+          <div class="hand-mult"><span class="label">Mult</span><b id="hand-mult">1.0</b></div>
+        </div>
+        <div class="hand-timer"><i id="hand-timer"></i></div>
+      </div>
+      <div id="chip-feed" class="chip-feed"></div>
+
       <div id="speed-card" class="card hud-speed">
         <span id="speed" class="value">0</span><span class="unit">km/h</span>
         <div id="stance" class="stance cruise">Cruise</div>
       </div>
       <div id="air" class="chip hud-air hidden">Air <b id="air-time">0.0s</b></div>
-      <div class="hud-keys">
-        <span><kbd>Mouse</kbd> steer &amp; look</span>
-        <span><kbd>W</kbd> tuck</span>
-        <span><kbd>S</kbd> snowplow</span>
-        <span><kbd>Space</kbd> jump</span>
-        <span><kbd>RMB</kbd> free-look</span>
+
+      <div class="card hud-gear">
+        <div class="gear-row"><span class="label">Hits</span><div id="hp" class="hp"></div></div>
+        <div class="gear-row"><span class="label">Ammo</span><div id="ammo" class="ammo"></div></div>
       </div>
+
+      <div id="lock" class="lock hidden"><i></i><i></i><i></i><i></i></div>
       <div id="crosshair"><i></i></div>
+      <div id="hitmarker" class="hitmarker"></div>
+      <div id="bursts"></div>
       <div id="popups"></div>
     </div>
 
     <div id="flash"></div>
+    <div id="hurt"></div>
 
     <section id="title" class="overlay">
       <div class="card big">
         <h1>Double <span>Black</span> Diamond</h1>
-        <p class="tag">You can't stop. Phase 1: the feel of the slope.</p>
+        <p class="tag">You can't stop. Shoot your way down. Speed is the multiplier.</p>
         <p class="touch-note">This prototype needs a keyboard and mouse. Open it on a computer to ski.</p>
         <button id="start" class="go">Click to drop in</button>
         <div class="controls">
-          <div><kbd>Mouse</kbd><span>Steer — your skis chase where you look</span></div>
-          <div><kbd>W</kbd><span>Tuck: faster, wobblier aim, wide turns</span></div>
-          <div><kbd>S</kbd><span>Snowplow: slows you, steadies your aim</span></div>
+          <div><kbd>Mouse</kbd><span>Steer: your skis chase where you look</span></div>
+          <div><kbd>LMB</kbd><span>Shoot</span></div>
+          <div><kbd>RMB</kbd><span>Hold to aim: zoom, stronger aim assist, skis hold their line</span></div>
+          <div><kbd>W</kbd><span>Tuck: faster and harder to hit, but wobbly aim and weak assist</span></div>
+          <div><kbd>S</kbd><span>Snowplow: slow and steady aim, but you are an easy target</span></div>
           <div><kbd>A</kbd><kbd>D</kbd><span>Steer with keys</span></div>
           <div><kbd>Space</kbd><span>Pop a jump</span></div>
-          <div><kbd>RMB</kbd><span>Hold to look around without steering</span></div>
           <div><kbd>R</kbd><kbd>N</kbd><span>Retry this mountain · new mountain</span></div>
-          <div><kbd>`</kbd><span>Tuning panel</span></div>
         </div>
-        <p class="seedline">Mountain seed <b id="title-seed">------</b></p>
+        <p class="rules">Kills, air, grazing trees and dodged bullets earn <b>chips</b>. Doing it fast builds the <b class="red">mult</b>. Keep scoring to grow the hand; get shot and you lose it.</p>
+        <p class="seedline">Mountain seed <b id="title-seed">------</b> · ` for the tuning panel</p>
       </div>
     </section>
 
@@ -67,7 +84,13 @@
       <div class="card big">
         <h2 id="result-title">Yard sale!</h2>
         <p id="result-sub" class="tag"></p>
+        <div class="payout">
+          <span class="label">Payout</span>
+          <b id="payout">$0</b>
+          <span id="payout-note" class="note"></span>
+        </div>
         <dl id="result-stats" class="stats"></dl>
+        <p class="bank">Bank <b id="bank">$0</b></p>
         <button class="go again">Ski it again</button>
         <p class="hint">Click or R to retry · N for a new mountain</p>
       </div>

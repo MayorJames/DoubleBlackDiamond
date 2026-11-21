@@ -17,7 +17,10 @@ import {
   vec3,
   wrapAngle,
 } from './math';
+import type { WeaponState } from './combat';
+import type { GuardKind, GuardState } from './guards';
 import type { Rng } from './rng';
+import { award, finishBonus, loseHand, newScore, type ScoreState } from './scoring';
 import type { Tuning } from './tuning';
 
 /** Everything a player can tell the simulation, sampled once per tick. */
@@ -30,6 +33,10 @@ export interface InputFrame {
   tuck: boolean;
   plow: boolean;
   jump: boolean;
+  /** Trigger held. */
+  fire: boolean;
+  /** Aim held: the skis keep their line, the view moves, and the aim assist widens. */
+  aim: boolean;
 }
 
 export const NEUTRAL_INPUT: Readonly<InputFrame> = Object.freeze({
@@ -39,10 +46,12 @@ export const NEUTRAL_INPUT: Readonly<InputFrame> = Object.freeze({
   tuck: false,
   plow: false,
   jump: false,
+  fire: false,
+  aim: false,
 });
 
 export type PlayerStatus = 'skiing' | 'crashed' | 'finished';
-export type CrashCause = 'tree' | 'impact' | 'edge';
+export type CrashCause = 'tree' | 'impact' | 'edge' | 'shot' | 'tower';
 
 export interface PlayerState {
   id: number;
@@ -77,6 +86,19 @@ export interface PlayerState {
   /** Furthest distance downhill reached. */
   distance: number;
   maxAir: number;
+
+  /** Hits left. */
+  hp: number;
+  /** Seconds of grace after being hit. */
+  invuln: number;
+  /** Seconds until one hit is won back. */
+  regen: number;
+  /** 0..1 blend of holding aim. */
+  aiming: number;
+  weapon: WeaponState;
+  score: ScoreState;
+  /** Tree last grazed, so one tree pays once. */
+  lastGraze: number;
 }
 
 export type SimEvent =
@@ -85,12 +107,28 @@ export type SimEvent =
   | { type: 'impact'; player: number; impact: number }
   | { type: 'treeBump'; player: number; speed: number }
   | { type: 'crash'; player: number; cause: CrashCause; speed: number }
-  | { type: 'finish'; player: number; tick: number };
+  | { type: 'finish'; player: number; tick: number }
+  | { type: 'graze'; player: number; tree: number }
+  | { type: 'shot'; player: number; from: Vec3; to: Vec3; hit: 'none' | 'terrain' | 'tree' | 'guard'; guard: number; head: boolean }
+  | { type: 'reload'; player: number }
+  | { type: 'reloaded'; player: number }
+  | { type: 'playerHit'; player: number; hp: number }
+  | { type: 'guardAim'; guard: number; target: number }
+  | { type: 'guardShot'; guard: number; target: number; hit: boolean; from: Vec3; to: Vec3 }
+  | { type: 'guardHit'; guard: number; player: number; head: boolean }
+  | { type: 'guardDown'; guard: number; player: number; head: boolean; cause: 'shot' | 'bowled'; dirX: number; dirZ: number }
+  | { type: 'chips'; player: number; label: string; chips: number; mult: number }
+  | { type: 'handCashed'; player: number; chips: number; mult: number; points: number }
+  | { type: 'handLost'; player: number; points: number };
+
+export type { GuardKind };
 
 export interface StepContext {
   course: Course;
   tuning: Tuning;
   tick: number;
+  rng: Rng;
+  guards: GuardState[];
   emit: (event: SimEvent) => void;
 }
 
@@ -107,8 +145,48 @@ const PLAYER_RADIUS = 0.35;
 /** Furthest the skis can turn away from the flight path while airborne. */
 const AIR_ALIGN = 30 * DEG;
 
+/** Passing this close to a tree's trunk at speed is a graze. */
+const GRAZE_GAP = 1.5;
+const GRAZE_SPEED = 14;
+
 const blend = (cruise: number, tuck: number, plow: number, p: PlayerState) =>
   lerp(lerp(cruise, tuck, p.tuck), plow, p.plow);
+
+/** Eye height above the feet for the current stance. */
+export const eyeHeight = (p: PlayerState): number => lerp(lerp(1.62, 1.05, p.tuck), 1.45, p.plow);
+/** How far the head leans forward over the skis in a tuck. */
+export const eyeLean = (p: PlayerState): number => p.tuck * 0.3;
+
+/** Where the player's eyes (and gun) are. Shots start here. */
+export function eyePosition(p: PlayerState, out: Vec3 = vec3()): Vec3 {
+  const lean = eyeLean(p);
+  out.x = p.pos.x - Math.sin(p.heading) * lean;
+  out.y = p.pos.y + eyeHeight(p);
+  out.z = p.pos.z - Math.cos(p.heading) * lean;
+  return out;
+}
+
+export function crashPlayer(p: PlayerState, cause: CrashCause, tick: number, emit: (e: SimEvent) => void): void {
+  if (p.status !== 'skiing') return;
+  p.status = 'crashed';
+  p.statusTick = tick;
+  p.crashCause = cause;
+  emit({ type: 'crash', player: p.id, cause, speed: length(p.vel) });
+}
+
+/** A guard's bullet found you: lose a hit, a little speed, and your open hand. */
+export function hurtPlayer(p: PlayerState, damage: number, tuning: Tuning, tick: number, emit: (e: SimEvent) => void): void {
+  if (p.status !== 'skiing' || p.invuln > 0) return;
+  p.hp = Math.max(0, p.hp - damage);
+  p.invuln = 0.6;
+  p.regen = tuning.hpRegenTime;
+  p.vel.x *= 0.92;
+  p.vel.y *= 0.92;
+  p.vel.z *= 0.92;
+  emit({ type: 'playerHit', player: p.id, hp: p.hp });
+  loseHand(p, { tuning, emit });
+  if (p.hp <= 0) crashPlayer(p, 'shot', tick, emit);
+}
 
 export function createPlayer(id: number, count: number, course: Course, tuning: Tuning, rng: Rng): PlayerState {
   const d = course.startD;
@@ -154,6 +232,13 @@ export function createPlayer(id: number, count: number, course: Course, tuning: 
     topSpeed: tuning.startSpeed,
     distance: d,
     maxAir: 0,
+    hp: tuning.playerHp,
+    invuln: 0,
+    regen: 0,
+    aiming: 0,
+    weapon: { ammo: tuning.magSize, cooldown: 0, reload: 0 },
+    score: newScore(),
+    lastGraze: -1,
   };
 }
 
@@ -169,13 +254,17 @@ export function stepPlayer(p: PlayerState, input: InputFrame, ctx: StepContext):
   const finished = p.status === 'finished';
   const active = p.status === 'skiing';
 
-  const crash = (cause: CrashCause) => {
-    if (p.status !== 'skiing') return;
-    p.status = 'crashed';
-    p.statusTick = tick;
-    p.crashCause = cause;
-    emit({ type: 'crash', player: p.id, cause, speed: length(v) });
-  };
+  const crash = (cause: CrashCause) => crashPlayer(p, cause, tick, emit);
+
+  // Grace after a hit, and winning hits back while nobody lands one.
+  if (p.invuln > 0) p.invuln -= DT;
+  if (active && p.hp < T.playerHp) {
+    p.regen -= DT;
+    if (p.regen <= 0) {
+      p.hp++;
+      p.regen = T.hpRegenTime;
+    }
+  }
 
   // --- Stance -------------------------------------------------------------------------------
   const wantPlow = (active && input.plow) || finished;
@@ -311,7 +400,16 @@ export function stepPlayer(p: PlayerState, input: InputFrame, ctx: StepContext):
     const dz = p.pos.z - tree.z;
     const r = tree.hitRadius + PLAYER_RADIUS;
     const d2 = dx * dx + dz * dz;
-    if (d2 >= r * r) return;
+    if (d2 >= r * r) {
+      const g = r + GRAZE_GAP;
+      if (d2 < g * g && p.status === 'skiing' && tree.id !== p.lastGraze && length(v) > GRAZE_SPEED) {
+        p.lastGraze = tree.id;
+        p.score.grazes++;
+        emit({ type: 'graze', player: p.id, tree: tree.id });
+        award(p, 'Graze', 10, 0.1, ctx);
+      }
+      return;
+    }
     const dist = Math.sqrt(d2) || 1e-4;
     const nx = dx / dist;
     const nz = dz / dist;
@@ -346,6 +444,9 @@ export function stepPlayer(p: PlayerState, input: InputFrame, ctx: StepContext):
           crash('impact');
         } else if (p.airTime >= LANDING_AIR) {
           emit({ type: 'land', player: p.id, impact, airTime: p.airTime });
+          if (p.airTime >= 0.5) {
+            award(p, p.airTime >= 1.5 ? 'Big air' : 'Air', Math.round(p.airTime * 40), 0.3 * p.airTime, ctx);
+          }
           const speed = length(v);
           if (speed > 10) {
             forwardFromYaw(p.heading, fwd);
@@ -371,7 +472,9 @@ export function stepPlayer(p: PlayerState, input: InputFrame, ctx: StepContext):
     p.status = 'finished';
     p.statusTick = tick;
     emit({ type: 'finish', player: p.id, tick });
+    finishBonus(p, course.finishD, tick * DT, ctx);
   }
+  if (p.status === 'crashed' && p.score.hand) loseHand(p, ctx);
 
   const speed = length(v);
   if (p.status === 'skiing') {

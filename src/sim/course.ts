@@ -8,6 +8,8 @@ import { clamp, smoothstep, type Vec3, vec3, normalize } from './math';
 import { Rng } from './rng';
 
 export interface Tree {
+  /** Index in Course.trees. */
+  id: number;
   x: number;
   y: number;
   z: number;
@@ -292,6 +294,7 @@ export class Course {
   private addTree(x: number, z: number, height: number, tint: number): void {
     const radius = height * 0.3;
     const tree: Tree = {
+      id: this.trees.length,
       x,
       z,
       y: this.heightAt(x, z),

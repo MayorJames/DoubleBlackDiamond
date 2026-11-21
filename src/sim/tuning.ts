@@ -55,6 +55,37 @@ export interface Tuning {
   wobbleTuckBoost: number;
   wobblePlowSteady: number;
   wobbleAir: number;
+
+  /** Seconds between shots while the trigger is held. */
+  fireInterval: number;
+  magSize: number;
+  reloadTime: number;
+  weaponRange: number;
+  /** Random spread when firing without holding aim, degrees. */
+  hipSpreadDeg: number;
+  /** Aim assist: shots bend toward a guard inside this cone, degrees. */
+  assistAimDeg: number;
+  assistHipDeg: number;
+  /** Fraction of the assist cone lost at full tuck. The assist is the steady half of the trade. */
+  assistTuckLoss: number;
+  /** Fraction added to the assist cone at full snowplow. */
+  assistPlowBonus: number;
+
+  /** Hits you can take; the last one is a wipeout. */
+  playerHp: number;
+  /** Seconds without being hit to win one hit back. */
+  hpRegenTime: number;
+  /** Multiplies every guard's hit chance. */
+  guardAccuracy: number;
+  /** Speed (m/s) at which guards' hit chance is halved. Going fast is your armour. */
+  dodgeSpeed: number;
+
+  /** Seconds a hand stays open after its last chips (time in the air doesn't count). */
+  comboWindow: number;
+  /** Mult added with every scoring event, per m/s above 10 m/s. */
+  multPerSpeed: number;
+  /** Mult that trickles in per second, per m/s above 20 m/s, while a hand is open. */
+  multFlow: number;
 }
 
 export const DEFAULT_TUNING: Readonly<Tuning> = Object.freeze({
@@ -91,6 +122,25 @@ export const DEFAULT_TUNING: Readonly<Tuning> = Object.freeze({
   wobbleTuckBoost: 1.5,
   wobblePlowSteady: 0.75,
   wobbleAir: 0.012,
+
+  fireInterval: 0.22,
+  magSize: 8,
+  reloadTime: 1.3,
+  weaponRange: 150,
+  hipSpreadDeg: 2,
+  assistAimDeg: 7,
+  assistHipDeg: 2.5,
+  assistTuckLoss: 0.8,
+  assistPlowBonus: 0.6,
+
+  playerHp: 3,
+  hpRegenTime: 10,
+  guardAccuracy: 1,
+  dodgeSpeed: 22,
+
+  comboWindow: 3.5,
+  multPerSpeed: 0.06,
+  multFlow: 0.012,
 });
 
 export const cloneTuning = (t: Readonly<Tuning> = DEFAULT_TUNING): Tuning => ({ ...t });
@@ -125,4 +175,20 @@ export const TUNING_RANGES: Record<keyof Tuning, [min: number, max: number, step
   wobbleTuckBoost: [0, 5, 0.1],
   wobblePlowSteady: [0, 1, 0.05],
   wobbleAir: [0, 0.05, 0.001],
+  fireInterval: [0.05, 1, 0.01],
+  magSize: [1, 30, 1],
+  reloadTime: [0.2, 4, 0.1],
+  weaponRange: [30, 300, 5],
+  hipSpreadDeg: [0, 10, 0.25],
+  assistAimDeg: [0, 20, 0.5],
+  assistHipDeg: [0, 20, 0.5],
+  assistTuckLoss: [0, 1, 0.05],
+  assistPlowBonus: [0, 2, 0.05],
+  playerHp: [1, 10, 1],
+  hpRegenTime: [1, 60, 1],
+  guardAccuracy: [0, 3, 0.05],
+  dodgeSpeed: [5, 60, 1],
+  comboWindow: [0.5, 10, 0.25],
+  multPerSpeed: [0, 0.3, 0.005],
+  multFlow: [0, 0.1, 0.001],
 };

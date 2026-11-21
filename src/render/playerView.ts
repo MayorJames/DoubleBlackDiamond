@@ -5,8 +5,9 @@
 import * as THREE from 'three';
 import type { Course } from '../sim/course';
 import { clamp, lerp, length, smoothstep, type Vec3 } from '../sim/math';
-import { LEG_REACH, type PlayerState, type SimEvent } from '../sim/player';
+import { eyeHeight, eyeLean, LEG_REACH, type PlayerState, type SimEvent } from '../sim/player';
 import type { Settings } from '../client/settings';
+import { INK, INK_SOFT, PAPER, RED } from './palette';
 
 export interface Viewport {
   /** Normalised 0..1 rectangle, origin bottom-left (WebGL convention). */
@@ -35,7 +36,13 @@ interface Loose {
   spin: THREE.Vector3;
 }
 
-const SKI_RED = '#e8443a';
+const SKI_RED = RED;
+/** Where the gun sits when firing from the hip, and when aiming down the sights. */
+const GUN_HIP = new THREE.Vector3(0.2, -0.2, -0.56);
+const GUN_AIM = new THREE.Vector3(0, -0.105, -0.52);
+const GUN_SCALE = 0.72;
+/** How far holding aim zooms the view in. */
+const AIM_ZOOM = 0.72;
 const GRAVITY = 11.5;
 /** Skis are drawn a little ahead of the feet so the tips poke into view, as hands do in shooters. */
 const SKI_FORWARD = 0.85;
@@ -49,7 +56,7 @@ function makeSki(): THREE.Group {
   tip.rotation.x = 0.5;
   const binding = new THREE.Mesh(
     new THREE.BoxGeometry(0.12, 0.08, 0.32),
-    new THREE.MeshLambertMaterial({ color: '#1d2b53', flatShading: true }),
+    new THREE.MeshLambertMaterial({ color: INK, flatShading: true }),
   );
   binding.position.set(0, 0.05, 0.05);
   g.add(board, tip, binding);
@@ -58,15 +65,45 @@ function makeSki(): THREE.Group {
 
 function makeGoggles(): THREE.Group {
   const g = new THREE.Group();
-  const strap = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.03), new THREE.MeshLambertMaterial({ color: '#1d2b53' }));
-  const lens = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.04), new THREE.MeshLambertMaterial({ color: '#ffb02e', emissive: '#663300' }));
+  const strap = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.03), new THREE.MeshLambertMaterial({ color: INK }));
+  const lens = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.04), new THREE.MeshLambertMaterial({ color: RED, emissive: '#500000' }));
   lens.position.z = 0.03;
   g.add(strap, lens);
   return g;
 }
 
 function makePole(): THREE.Mesh {
-  return new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.2, 0.03), new THREE.MeshLambertMaterial({ color: '#c9d2e3' }));
+  return new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.2, 0.03), new THREE.MeshLambertMaterial({ color: INK }));
+}
+
+/** A silenced pocket pistol in a black glove, with a red dot sight. Built from boxes. */
+function makeGun(): { gun: THREE.Group; flash: THREE.Mesh } {
+  const gun = new THREE.Group();
+  const ink = new THREE.MeshLambertMaterial({ color: INK, flatShading: true });
+  const soft = new THREE.MeshLambertMaterial({ color: INK_SOFT, flatShading: true });
+  const slide = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.26), ink);
+  slide.position.set(0, 0.035, -0.02);
+  const silencer = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.2, 6), soft);
+  silencer.rotation.x = Math.PI / 2;
+  silencer.position.set(0, 0.04, -0.24);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.13, 0.07), ink);
+  grip.position.set(0, -0.05, 0.07);
+  grip.rotation.x = -0.25;
+  const glove = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.11), soft);
+  glove.position.set(0.005, -0.06, 0.09);
+  const sight = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.02, 0.03), new THREE.MeshBasicMaterial({ color: RED }));
+  sight.position.set(0, 0.08, 0.04);
+  const flash = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.07, 0),
+    new THREE.MeshBasicMaterial({ color: PAPER, transparent: true, opacity: 0.95, fog: false }),
+  );
+  flash.position.set(0, 0.04, -0.37);
+  flash.scale.set(1, 1, 2.2);
+  flash.visible = false;
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.035, 0), new THREE.MeshBasicMaterial({ color: RED, fog: false }));
+  flash.add(core);
+  gun.add(slide, silencer, grip, glove, sight, flash);
+  return { gun, flash };
 }
 
 const tmpFwd = new THREE.Vector3();
@@ -90,6 +127,11 @@ export class PlayerView {
   private kick = 0;
   private crashT = -1;
   private spinDir = 1;
+  private readonly gun: THREE.Group;
+  private readonly flash: THREE.Mesh;
+  private recoil = 0;
+  private flashT = 0;
+  private aimBlend = 0;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -99,16 +141,22 @@ export class PlayerView {
     this.camera.rotation.order = 'YXZ';
     this.skis.add(this.skiL, this.skiR);
     scene.add(this.skis);
+    const { gun, flash } = makeGun();
+    this.gun = gun;
+    this.flash = flash;
+    this.camera.add(gun);
+    scene.add(this.camera); // so the gun, a child of the camera, is drawn
   }
 
   dispose(): void {
     this.scene.remove(this.skis);
+    this.scene.remove(this.camera);
     for (const l of this.loose) this.scene.remove(l.obj);
     this.loose = [];
   }
 
   onEvent(e: SimEvent, player: PlayerState): void {
-    if (e.player !== this.playerIndex) return;
+    if (!('player' in e) || e.player !== this.playerIndex) return;
     switch (e.type) {
       case 'land':
         this.dipVel -= Math.min(0.6 + e.impact * 0.28, 3.2);
@@ -120,6 +168,14 @@ export class PlayerView {
         break;
       case 'treeBump':
         this.kick = Math.max(this.kick, 0.06);
+        break;
+      case 'shot':
+        this.recoil = 1;
+        this.flashT = 0.05;
+        break;
+      case 'playerHit':
+        this.kick = Math.max(this.kick, 0.12);
+        this.dipVel -= 1.2;
         break;
       case 'crash':
         this.yardSale(player);
@@ -139,9 +195,10 @@ export class PlayerView {
     this.dip += this.dipVel * dt;
     this.kick *= Math.exp(-dt * 7);
 
-    // Speed widens the view; the tuck adds a touch more.
-    const fovTarget = settings.fov + 18 * smoothstep(10, 45, speed) + 5 * p.tuck;
-    this.fov += (fovTarget - this.fov) * (1 - Math.exp(-dt * 3));
+    // Speed widens the view; the tuck adds a touch more; holding aim zooms in.
+    this.aimBlend += (p.aiming - this.aimBlend) * (1 - Math.exp(-dt * 18));
+    const fovTarget = (settings.fov + 18 * smoothstep(10, 45, speed) + 5 * p.tuck) * lerp(1, AIM_ZOOM, this.aimBlend);
+    this.fov += (fovTarget - this.fov) * (1 - Math.exp(-dt * (this.aimBlend > 0.05 ? 12 : 3)));
     if (Math.abs(this.camera.fov - this.fov) > 0.01) {
       this.camera.fov = this.fov;
       this.camera.updateProjectionMatrix();
@@ -159,8 +216,8 @@ export class PlayerView {
     const shakeP = chatter * 0.5 * (Math.sin(t * 27.1) + 0.5 * Math.sin(t * 53.7));
     const shakeYaw = chatter * 0.3 * Math.sin(t * 23.3);
 
-    let eyeH = lerp(lerp(1.62, 1.05, p.tuck), 1.45, p.plow);
-    const leanFwd = p.tuck * 0.3;
+    let eyeH = eyeHeight(p);
+    const leanFwd = eyeLean(p);
     let yaw = f.lookYaw + shakeYaw;
     let pitch = f.lookPitch + shakeP;
     let roll = this.roll;
@@ -184,7 +241,33 @@ export class PlayerView {
     this.camera.rotation.set(pitch, yaw, roll);
 
     if (!crashed) this.placeSkis(f, gap);
+    this.placeGun(p, dt, crashed);
     this.updateLoose(dt);
+  }
+
+  /** Where shots leave the gun, in world space (for tracers). */
+  muzzleWorld(out: THREE.Vector3): THREE.Vector3 {
+    this.camera.updateMatrixWorld();
+    return this.flash.getWorldPosition(out);
+  }
+
+  private placeGun(p: PlayerState, dt: number, crashed: boolean): void {
+    this.gun.visible = !crashed;
+    if (crashed) return;
+    this.recoil *= Math.exp(-dt * 14);
+    this.flashT -= dt;
+    this.flash.visible = this.flashT > 0;
+    if (this.flash.visible) this.flash.rotation.z = Math.random() * Math.PI;
+    const reloading = p.weapon.reload > 0 ? Math.sin(Math.min(1, 1 - p.weapon.reload / 1.3) * Math.PI) : 0;
+    this.gun.position.lerpVectors(GUN_HIP, GUN_AIM, this.aimBlend);
+    // Keep the gun the same size on screen when the view zooms or widens.
+    const fovScale = Math.tan((this.camera.fov * Math.PI) / 360) / Math.tan((70 * Math.PI) / 360);
+    this.gun.position.multiplyScalar(fovScale);
+    this.gun.scale.setScalar(GUN_SCALE * fovScale);
+    this.gun.position.z += this.recoil * 0.07;
+    this.gun.position.y -= reloading * 0.18;
+    // The gun sways with the same wobble that throws your shots off.
+    this.gun.rotation.set(this.recoil * 0.3 - reloading * 0.9 + p.wobblePitch * 2, p.wobbleYaw * 2, reloading * 0.5);
   }
 
   private placeSkis(f: ViewFrame, gap: number): void {

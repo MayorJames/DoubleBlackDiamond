@@ -110,6 +110,122 @@ export class Sfx {
     }
   }
 
+  // --- Gunfight and scoring sounds (slapstick on purpose) -----------------------------------
+
+  /** Your silenced pistol: a cheap "pft". */
+  gunshot(): void {
+    if (!this.ctx) return;
+    this.burst(0.07, 0.35, 3200);
+    this.tone('square', 900, 220, 0.06, 0.08);
+  }
+
+  /** A guard's shot, quieter with distance. */
+  enemyShot(dist: number): void {
+    if (!this.ctx) return;
+    const g = Math.max(0.08, 0.5 - dist / 300);
+    this.burst(0.18, g, 1400);
+    this.thump(g * 0.8, 120);
+  }
+
+  /** A bullet zipping past your ear. */
+  whizz(): void {
+    if (!this.ctx) return;
+    this.tone('sawtooth', 2400, 600, 0.12, 0.05);
+  }
+
+  /** Headshots go "bonk". */
+  bonk(): void {
+    if (!this.ctx) return;
+    this.tone('sine', 780, 520, 0.16, 0.4);
+    this.tone('triangle', 1560, 900, 0.08, 0.12);
+  }
+
+  hitTick(): void {
+    if (!this.ctx) return;
+    this.tone('square', 1200, 1100, 0.04, 0.08);
+  }
+
+  /** A downed guard leaves on a slide whistle. */
+  slideWhistle(): void {
+    if (!this.ctx) return;
+    this.tone('sine', 1400, 260, 0.55, 0.22);
+  }
+
+  /** Bowling a guard over. */
+  boing(): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(520, t + 0.08);
+    osc.frequency.exponentialRampToValueAtTime(140, t + 0.35);
+    g.gain.setValueAtTime(0.35, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.42);
+  }
+
+  /** You got hit. */
+  oof(): void {
+    if (!this.ctx) return;
+    this.tone('square', 160, 70, 0.22, 0.25);
+    this.thump(0.6, 90);
+  }
+
+  /** Chips land: a blip that climbs with every event in the hand. */
+  chipTick(n: number): void {
+    if (!this.ctx) return;
+    const f = 440 * Math.pow(2, Math.min(n, 24) / 12);
+    this.tone('square', f, f, 0.07, 0.07);
+  }
+
+  /** A hand cashes in. */
+  chaChing(): void {
+    if (!this.ctx) return;
+    this.tone('square', 1318, 1318, 0.08, 0.1);
+    setTimeout(() => this.tone('square', 1760, 1760, 0.25, 0.1), 80);
+    this.burst(0.3, 0.12, 6000);
+  }
+
+  /** A hand lost to a bullet or a wipeout: wah-wah-wah-waaah. */
+  sadTrombone(): void {
+    if (!this.ctx) return;
+    [311, 294, 277].forEach((f, i) => setTimeout(() => this.tone('sawtooth', f, f * 0.98, 0.22, 0.09), i * 230));
+    setTimeout(() => this.tone('sawtooth', 262, 240, 0.7, 0.09), 690);
+  }
+
+  reloadClick(): void {
+    if (!this.ctx) return;
+    this.tone('square', 2000, 1800, 0.03, 0.08);
+    setTimeout(() => this.tone('square', 1500, 1300, 0.04, 0.08), 120);
+  }
+
+  /** A sniper's laser has found you. */
+  laserHum(): void {
+    if (!this.ctx) return;
+    this.tone('sine', 600, 1300, 1.5, 0.06);
+  }
+
+  private tone(type: OscillatorType, from: number, to: number, duration: number, gain: number): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + duration);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + duration + 0.02);
+  }
+
   private loop(): AudioBufferSourceNode {
     const src = this.ctx!.createBufferSource();
     src.buffer = this.noise;

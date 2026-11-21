@@ -69,3 +69,23 @@ export const loadSettings = (): Settings => read(SETTINGS_KEY, DEFAULT_SETTINGS)
 export const saveSettings = (s: Settings): void => write(SETTINGS_KEY, s);
 export const loadTuning = (): Tuning => read(TUNING_KEY, DEFAULT_TUNING);
 export const saveTuning = (t: Tuning): void => write(TUNING_KEY, t);
+
+const BANK_KEY = 'dbd.bank.v1';
+
+/** Cash banked across runs on this browser, until the lodge gives it somewhere to go. */
+export function loadBank(): number {
+  try {
+    const n = Number(localStorage.getItem(BANK_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveBank(n: number): void {
+  try {
+    localStorage.setItem(BANK_KEY, String(n));
+  } catch {
+    // Not persisted; the payout still shows.
+  }
+}

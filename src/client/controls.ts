@@ -3,9 +3,9 @@
 // Mouse look is applied the moment the event arrives and the camera reads it straight from
 // here every frame, so turning your head never waits for a simulation tick.
 //
-// The mouse steers: the skis chase where you look. Hold right mouse (or Q) to free-look:
-// the skis hold their line, the mouse moves only your head (and A/D still steer), and on
-// release the view swings back to your skis, GoldenEye-style.
+// The mouse steers: the skis chase where you look. Hold right mouse (or Q) to aim: the skis
+// hold their line, the mouse moves only your head and gun (A/D still steer), and on release the
+// view swings back to your skis, GoldenEye-style. Left mouse (or F) shoots.
 
 import { DEG } from '../sim/constants';
 import { clamp, wrapAngle } from '../sim/math';
@@ -30,7 +30,10 @@ const LEFT_KEYS = ['KeyA', 'ArrowLeft'];
 const RIGHT_KEYS = ['KeyD', 'ArrowRight'];
 const JUMP_KEYS = ['Space'];
 const FREELOOK_KEYS = ['KeyQ'];
-const GAME_KEYS = new Set([...TUCK_KEYS, ...PLOW_KEYS, ...LEFT_KEYS, ...RIGHT_KEYS, ...JUMP_KEYS, ...FREELOOK_KEYS]);
+const FIRE_KEYS = ['KeyF'];
+const GAME_KEYS = new Set([...TUCK_KEYS, ...PLOW_KEYS, ...LEFT_KEYS, ...RIGHT_KEYS, ...JUMP_KEYS, ...FREELOOK_KEYS, ...FIRE_KEYS]);
+/** Mouse sensitivity while holding aim, for finer control. */
+const AIM_SENSITIVITY = 0.7;
 
 export class LocalControls {
   /** World yaw the skis should point. */
@@ -45,6 +48,8 @@ export class LocalControls {
   private readonly keys = new Set<string>();
   private jumpLatch = false;
   private freelookMouse = false;
+  private fireMouse = false;
+  private fireLatch = false;
   private lockedAt = 0;
   private readonly abort = new AbortController();
 
@@ -86,6 +91,8 @@ export class LocalControls {
     this.lookOffset = 0;
     this.pitch = -0.18;
     this.jumpLatch = false;
+    this.fireLatch = false;
+    this.fireMouse = false;
   }
 
   /** Per rendered frame: keyboard steering, the free-look swing-back and the steering limit. */
@@ -108,6 +115,8 @@ export class LocalControls {
     const jump = this.enabled && (this.anyKey(JUMP_KEYS) || this.jumpLatch);
     this.jumpLatch = false;
     const plow = this.enabled && this.anyKey(PLOW_KEYS);
+    const fire = this.enabled && (this.fireMouse || this.fireLatch || this.anyKey(FIRE_KEYS));
+    this.fireLatch = false;
     return {
       steerYaw: this.steerYaw,
       aimYaw: this.lookYaw,
@@ -115,6 +124,8 @@ export class LocalControls {
       tuck: this.enabled && !plow && this.anyKey(TUCK_KEYS),
       plow,
       jump,
+      fire,
+      aim: this.enabled && this.freelook,
     };
   }
 
@@ -131,6 +142,7 @@ export class LocalControls {
     if (e.target instanceof HTMLInputElement) return;
     if (GAME_KEYS.has(e.code)) e.preventDefault();
     if (JUMP_KEYS.includes(e.code) && !e.repeat) this.jumpLatch = true;
+    if (FIRE_KEYS.includes(e.code) && !e.repeat) this.fireLatch = true;
     this.keys.add(e.code);
   };
 
@@ -140,10 +152,16 @@ export class LocalControls {
 
   private readonly onMouseDown = (e: MouseEvent) => {
     if (e.button === 2) this.freelookMouse = true;
+    // Shoot only once the mouse is captured, so the click that starts or resumes doesn't fire.
+    if (e.button === 0 && this.enabled && document.pointerLockElement === this.target) {
+      this.fireMouse = true;
+      this.fireLatch = true;
+    }
   };
 
   private readonly onMouseUp = (e: MouseEvent) => {
     if (e.button === 2) this.freelookMouse = false;
+    if (e.button === 0) this.fireMouse = false;
   };
 
   private readonly onMouseMove = (e: MouseEvent) => {
@@ -152,7 +170,7 @@ export class LocalControls {
     if (!locked && !(this.dragFallback && e.buttons & 1)) return;
     if (locked && performance.now() - this.lockedAt < LOCK_SETTLE_MS) return;
     if (Math.abs(e.movementX) > MAX_EVENT_MOVE || Math.abs(e.movementY) > MAX_EVENT_MOVE) return;
-    const s = this.settings.sensitivity;
+    const s = this.settings.sensitivity * (this.freelook ? AIM_SENSITIVITY : 1);
     const dx = e.movementX * s;
     const dy = e.movementY * s * (this.settings.invertY ? -1 : 1);
     if (this.freelook) this.lookOffset -= dx;

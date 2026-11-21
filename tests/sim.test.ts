@@ -1,34 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Course } from '../src/sim/course';
-import { DT, TICK_RATE } from '../src/sim/constants';
+import { DT } from '../src/sim/constants';
 import { NEUTRAL_INPUT, speedOf, type InputFrame, type PlayerState } from '../src/sim/player';
 import { Sim } from '../src/sim/sim';
+import { botInput, gunnerInput, run } from './bot';
 
-/** A simple bot that follows the course's tree-free line, holding a stance. */
-function botInput(sim: Sim, p: PlayerState, stance: Partial<InputFrame> = {}): InputFrame {
-  const c = sim.course;
-  const d = -p.pos.z;
-  const ahead = 4;
-  const lineYaw = -Math.atan((c.lineX(d + ahead + 1) - c.lineX(d + ahead - 1)) / 2);
-  const error = p.pos.x - c.lineX(d);
-  const yaw = lineYaw + Math.max(-0.5, Math.min(0.5, error * 0.12));
-  return { ...NEUTRAL_INPUT, steerYaw: yaw, aimYaw: yaw, ...stance };
-}
-
-function run(sim: Sim, seconds: number, input: (sim: Sim, p: PlayerState, tick: number) => InputFrame) {
-  const ticks = Math.round(seconds * TICK_RATE);
-  for (let t = 0; t < ticks; t++) sim.step(sim.players.map((p) => input(sim, p, sim.tick)));
-}
-
-/** A scripted mix of stances, jumps and steering, so determinism covers every code path. */
+/** A scripted mix of stances, jumps, steering and shooting, so determinism covers every path. */
 function scripted(sim: Sim, p: PlayerState, tick: number): InputFrame {
   const phase = Math.floor(tick / 240) % 4;
-  return botInput(sim, p, {
-    tuck: phase === 1,
-    plow: phase === 3,
-    jump: tick % 300 < 4,
-    aimPitch: Math.sin(tick * 0.01) * 0.3,
-  });
+  const stance = { tuck: phase === 1, plow: phase === 3, jump: tick % 300 < 4 };
+  return tick % 600 < 300 ? gunnerInput(sim, p, stance) : botInput(sim, p, { ...stance, fire: tick % 50 < 3 });
 }
 
 describe('seeded run', () => {
@@ -73,11 +54,18 @@ describe('seeded run', () => {
   });
 });
 
+/** A run with every guard gone, for tests about skiing rather than gunfights. */
+function calm(seed: string): Sim {
+  const sim = Sim.create({ seed });
+  for (const g of sim.state.guards) g.mode = 'gone';
+  return sim;
+}
+
 describe('skiing feel', () => {
   const seeds = ['alpine', 'powder', 'mogul', 'whiteout', 'yeti'];
 
   function speedAfter(seed: string, stance: Partial<InputFrame>, seconds: number) {
-    const sim = Sim.create({ seed });
+    const sim = calm(seed);
     run(sim, seconds, (s, p) => botInput(s, p, stance));
     return { sim, p: sim.players[0], speed: speedOf(sim.players[0]) };
   }
@@ -94,7 +82,7 @@ describe('skiing feel', () => {
 
   it('snowplowing brakes hard from speed but never brings you to a stop', () => {
     for (const seed of seeds) {
-      const sim = Sim.create({ seed });
+      const sim = calm(seed);
       run(sim, 6, (s, p) => botInput(s, p, { tuck: true }));
       const fast = speedOf(sim.players[0]);
       run(sim, 3, (s, p) => botInput(s, p, { plow: true }));
@@ -111,7 +99,7 @@ describe('skiing feel', () => {
 
   it('every seed can be skied to base camp', () => {
     for (const seed of seeds) {
-      const sim = Sim.create({ seed });
+      const sim = calm(seed);
       run(sim, 150, (s, p) => botInput(s, p, {}));
       const p = sim.players[0];
       expect({ seed, status: p.status, cause: p.crashCause }).toEqual({ seed, status: 'finished', cause: null });
@@ -124,7 +112,7 @@ describe('skiing feel', () => {
   it('a tucked run is quicker to base camp than a cruise', () => {
     for (const seed of seeds.slice(0, 3)) {
       const time = (stance: Partial<InputFrame>) => {
-        const sim = Sim.create({ seed });
+        const sim = calm(seed);
         run(sim, 150, (s, p) => botInput(s, p, stance));
         const p = sim.players[0];
         return p.status === 'finished' ? p.statusTick * DT : Infinity;

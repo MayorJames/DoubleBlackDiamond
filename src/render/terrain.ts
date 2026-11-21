@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import type { Course } from '../sim/course';
+import { PAPER, SNOW_SHADE } from './palette';
 
 const ROW_STEP = 2;
 const FINE_ROW_STEP = 0.5;
@@ -28,10 +29,10 @@ function columnOffsets(course: Course): number[] {
   return cols.concat(right);
 }
 
-const snow = new THREE.Color('#f3f7ff');
-const bank = new THREE.Color('#d9e4f4');
-const forest = new THREE.Color('#e2e9f5');
-const ice = new THREE.Color('#a9d4ff');
+const snow = new THREE.Color(PAPER);
+const bank = new THREE.Color(SNOW_SHADE);
+const forest = new THREE.Color('#efefef');
+const ice = new THREE.Color('#bdbdbd');
 
 export function buildTerrain(course: Course, snowTexture: THREE.Texture): THREE.Group {
   const group = new THREE.Group();
