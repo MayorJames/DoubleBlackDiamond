@@ -251,11 +251,6 @@ export class App {
 
   private reseed(seed: string): void {
     if (this.run) return;
-    const built = this.profile.mountain.routes.length + this.profile.mountain.features.length;
-    if (built && !window.confirm('A new mountain clears everything you have built on this one. Every tile goes back in stock. Go ahead?')) {
-      this.refreshHome();
-      return;
-    }
     clearPlan(this.profile.mountain, this.profile.tiles, seed);
     saveProfile(this.profile);
     this.refreshHome();

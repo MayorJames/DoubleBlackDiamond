@@ -77,11 +77,21 @@ export class MountainUi {
       this.draft = null;
       this.renderTools();
     });
-    $('seed-random').addEventListener('click', () => hooks.reseed(hooks.newSeed()));
+    // A new mountain clears what you've built, so it takes a second click to confirm.
+    $('seed-random').addEventListener('click', () => {
+      const seed = this.pendingSeed ?? hooks.newSeed();
+      if (this.built() && performance.now() > this.armedUntil) return this.arm(seed);
+      this.disarm();
+      hooks.reseed(seed);
+    });
     $('seed-input').addEventListener('change', () => {
       const seed = $<HTMLInputElement>('seed-input').value.trim().toUpperCase();
-      if (seed && this.profile && seed !== this.profile.mountain.seed) hooks.reseed(seed);
-      else if (this.profile) $<HTMLInputElement>('seed-input').value = this.profile.mountain.seed;
+      if (!seed || !this.profile || seed === this.profile.mountain.seed) {
+        if (this.profile) $<HTMLInputElement>('seed-input').value = this.profile.mountain.seed;
+        return;
+      }
+      if (this.built()) this.arm(seed);
+      else hooks.reseed(seed);
     });
     $('start').addEventListener('click', () => hooks.start());
 
@@ -113,6 +123,36 @@ export class MountainUi {
       this.cancel();
     });
     window.addEventListener('resize', () => this.renderer.resize());
+  }
+
+  private pendingSeed: string | null = null;
+  private armedUntil = 0;
+  private armTimer = 0;
+
+  private built(): number {
+    return this.profile ? this.profile.mountain.routes.length + this.profile.mountain.features.length : 0;
+  }
+
+  /** Asks for a second click before clearing the mountain for `seed`. */
+  private arm(seed: string): void {
+    this.pendingSeed = seed;
+    this.armedUntil = performance.now() + 5000;
+    const btn = $<HTMLButtonElement>('seed-random');
+    btn.textContent = 'Click again to clear';
+    btn.classList.add('go');
+    this.say(`A new mountain (${seed}) clears everything built on this one; every tile goes back in stock. Click again to go ahead.`);
+    clearTimeout(this.armTimer);
+    this.armTimer = window.setTimeout(() => this.disarm(), 5000);
+  }
+
+  private disarm(): void {
+    clearTimeout(this.armTimer);
+    this.pendingSeed = null;
+    this.armedUntil = 0;
+    const btn = $<HTMLButtonElement>('seed-random');
+    btn.textContent = 'New mountain';
+    btn.classList.remove('go');
+    if (this.profile) $<HTMLInputElement>('seed-input').value = this.profile.mountain.seed;
   }
 
   /** Drops a half-laid path. Returns whether there was one. */
@@ -163,7 +203,7 @@ export class MountainUi {
 
   private say(text: string): void {
     this.flash = text;
-    this.flashUntil = performance.now() + 2200;
+    this.flashUntil = performance.now() + (text.length > 80 ? 5000 : 2200);
   }
 
   /** Whether cell c would finish the path being laid: trail right next to its last cell. */
