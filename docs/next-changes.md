@@ -1,8 +1,11 @@
 # Double Black Diamond: next round of changes
 
-Notes from playtesting the routes, art, bosses and weather build (Nov 22, 2026). Nothing here is built
-yet. Each item records the request, how the current build differs, and a proposed approach to confirm
-before building.
+Notes from playtesting the routes, art, bosses and weather build (Nov 22, 2026). Each item records
+the request, how the build differed, the proposed approach, and (under **Built**) what went in and
+how each open question was answered.
+
+**Status:** all ten items are built (Nov 22, 2026). The open questions were settled with the defaults
+below; any of them can be revisited.
 
 ## Vision for this round
 
@@ -30,6 +33,8 @@ Keep the loop-building heart, but make every lap an active economy:
 - **Now:** the mountain starts empty; enemies appear only when you place enemy cards.
 - **Proposal:** at the start of every lap, including the first, spawn a wave on the trail. It should
   scale with the lap number and difficulty. Pairs with item 9.
+- **Built:** each lap brings its own wave from lap 1: two or three enemies on lap 1, one more
+  every two laps, scattered in ones and twos on trail tiles away from the lodge.
 
 ### 2. Card points and a shop while you ski
 
@@ -46,6 +51,13 @@ Keep the loop-building heart, but make every lap an active economy:
   - Does chips x mult stay at all, perhaps as what earns card points?
   - Can you reroll without buying (at a cost)?
   - Is the "daily" payout per lap (item 9) or per expedition?
+- **Built:** every chip pays chips x your mult at that moment in points. A shop of three sits
+  beside the hand; buying rerolls all three, and a paid reroll (10, then 5 more each time in a lap)
+  is there too. Each kill pays a cash bounty scaled by level and difficulty, banked at the lodge
+  every lap.
+  - Chips x mult stays, as the way points are earned.
+  - Rerolling without buying: yes, for points.
+  - The payout is per lap, banked at the lodge.
 
 ### 3. Build the course from tiles, replacing the difficulty picker
 
@@ -65,6 +77,13 @@ Keep the loop-building heart, but make every lap an active economy:
 - **To decide:**
   - Are tiles bought at the lodge (meta), during the run (with card points), or both?
   - Does a mountain persist between expeditions? This is the open question from the vision doc.
+- **Built:** a home mountain saved with the town and built in The Mountain tab: trail tiles lay
+  paths of any shape (detours and loop-backs that double back uphill), plus lifts, chutes, jumps,
+  slalom gates, tunnels, checkpoints and black run signs. Difficulty is read off the mountain and
+  replaces the rating picker; beating the Baron earns a black run sign.
+  - Tiles are earned on expeditions (a trail tile per two laps, special tiles from bosses) and bought
+    in town; during a run, route cards (Chairlift, Chute, Cat Track) still branch the trail.
+  - The mountain persists between expeditions; the cards you place on it last one expedition.
 
 ### 4. Fewer chairlifts
 
@@ -74,6 +93,8 @@ Keep the loop-building heart, but make every lap an active economy:
   - Make lifts rare: drop the weight, take them out of the starter deck or make them shop-only, and cap
     how many one mountain can have.
   - Intel fragments currently need a lift, so that gate may need rethinking.
+- **Built:** Chairlift left the starter deck (Gondola Works unlocks it), draws half as often, and
+  a mountain holds two lifts at most. Intel fragments now drop from lap 2 instead of needing a lift.
 
 ### 5. About three times as many cards
 
@@ -85,6 +106,9 @@ Keep the loop-building heart, but make every lap an active economy:
   - Add them in themed batches: enemy cards (item 6), terrain, support, weather, and path tiles
     (item 3).
   - Each card needs a 32x32 illustration in the existing art style.
+- **Built:** 53 cards to draw and buy (up from 18), each with card art and a map sprite: trail
+  features, roadside auras and once-a-lap pickups, landscape tiles, two new weathers, one-shot action
+  cards, and the Cat Track route. Decks hold up to 14.
 
 ### 6. At least six enemy types, each from its own card
 
@@ -101,6 +125,9 @@ Keep the loop-building heart, but make every lap an active economy:
     - an avalanche spotter who triggers slides;
     - a dog handler with fast chasers.
   - Each needs a map sprite and an illustration.
+- **Built:** seven enemy types from their own cards: guards (Patrol Post, Guard Cabin, Checkpoint),
+  snipers, snowmobiles, yetis (Yeti Cave), sappers who mine the trail (Demo Shack), turncoat medics
+  who heal the others (Field Hospital) and hounds (Kennel).
 
 ### 7. Many more guns and gear, eventually 50 to 100
 
@@ -115,6 +142,11 @@ Keep the loop-building heart, but make every lap an active economy:
     tuck without losing aim.
   - Add a gear illustration style, like the card art, and a rarity and unlock pool at the lodge.
 - **To decide:** does "gear cards" mean gear also shows up as buyable cards in the shop (item 2)?
+- **Built:** 69 named items with fixed numbers that grow with level, most with a mechanic of
+  their own (splash, pierce, stun, life steal, skate, steady aim, night vision, an airbag that saves
+  you once, and more). The Armory, Rental Shop and Spy HQ add to the pool, and the town keeps a gear
+  locker of everything found.
+  - Gear also turns up in the shop: the last offer is a piece of gear about a third of the time.
 
 ### 8. Card description bubbles cover the bottom row
 
@@ -126,6 +158,9 @@ Keep the loop-building heart, but make every lap an active economy:
   - Hide the bubble the moment a card is selected for placing.
   - Move it off the map (beside the hand or in the side panel).
   - Add a close button and a "don't show card tips" toggle remembered in the browser.
+- **Built:** the bubble only shows while hovering a card in the hand or shop, sitting over that
+  card. Picking a card up hides it and shows a one-line hint along the top of the map with a cancel
+  button. A "Card tips" toggle by the hand (and in Settings) is remembered in the browser.
 
 ### 9. Count laps, not days; spawn enemies per lap
 
@@ -140,6 +175,9 @@ Keep the loop-building heart, but make every lap an active economy:
     random generator) and which tile to send them to.
   - Weather lasts N laps; powder heals once a lap.
   - Pairs with item 1. Spawns stay seeded, so runs remain reproducible.
+- **Built:** the day clock is gone. Spawns happen at the start of each descent (every lap, and
+  every loop-back), with seeded counts and places per card; weather lasts this lap and the next;
+  powder heals once a lap; the top bar shows lap progress and the enemy count.
 
 ### 10. Reorganise the game into clear pages and menus
 
@@ -175,6 +213,12 @@ Keep the loop-building heart, but make every lap an active economy:
 - **To decide:**
   - Can you open the town or mountain views during a run (paused), or only between runs?
   - Should the start page carry over the latest town state, so it reflects your progress?
+- **Built:** a start page over the live town, a How to Play page with nine illustrated panels, a
+  settings box, and a play page with Ski town, The mountain and Ski loops tabs. The town grows as you
+  build (new plots, a lodge that gains a balcony and a clock tower, townsfolk and skiers) and echoes
+  the last expedition's weather.
+  - The town and mountain open mid-run, read-only, and the slopes pause until you come back.
+  - The start page shows your current town.
 
 ## Suggested order
 

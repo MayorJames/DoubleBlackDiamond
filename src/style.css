@@ -550,12 +550,12 @@ h2 .count {
 .builder {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .builder-map {
   position: relative;
   aspect-ratio: 18 / 10.6;
-  min-height: 220px;
 }
 
 #builder-map {
@@ -579,7 +579,7 @@ h2 .count {
 
 .tools {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(112px, 30%), 1fr));
   gap: 6px;
 }
 
@@ -2079,6 +2079,12 @@ h2 .count {
 @media (max-width: 560px) {
   .play-nav {
     gap: 8px;
+  }
+  .tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .builder-hint {
+    font-size: 16px;
   }
   .tabs button {
     padding: 6px 7px;
