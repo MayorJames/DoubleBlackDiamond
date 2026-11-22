@@ -59,19 +59,19 @@ const def = (id: CardId, name: string, kind: CardKind, weight: number, boss: num
 /** Dossier cards: assembled from intel fragments, never drawn from a deck. */
 const dossier = (id: CardId, name: string, text: string, flavor: string): CardDef => def(id, name, 'boss', 0, 3, text, flavor);
 export const CARDS: Record<CardId, CardDef> = {
-  patrol: def('patrol', 'Patrol Post', 'trail', 3, 1, 'A guard now, and another every 2 days (up to 3).', 'Papers, please. Also, skis.'),
+  patrol: def('patrol', 'Patrol Post', 'trail', 3, 1, 'A guard now, and 1-2 more at the start of every descent (up to 3 here).', 'Papers, please. Also, skis.'),
   moguls: def('moguls', 'Mogul Field', 'trail', 2, 1, 'Slows you to 70%. +12 chips each pass, +0.3 mult if you tuck through.', 'Knees optional.'),
   kicker: def('kicker', 'Kicker', 'trail', 2, 1, "Airborne here: you can't be hit, or shoot. +25 chips, +0.5 mult.", 'Send it.'),
   ice: def('ice', 'Ice Sheet', 'trail', 2, 1, 'Speed x1.6 here, but your aim is x0.6.', 'Groomed by a zamboni with a grudge.'),
-  cabin: def('cabin', 'Guard Cabin', 'roadside', 2, 1, 'Every 3 days a guard walks out onto the trail next door.', 'Smoke from the chimney. Bullets from the window.'),
-  sniper: def('sniper', 'Sniper Nest', 'roadside', 2, 2, 'A sniper fires from 2.5 tiles away. He comes back 3 days after you drop him.', 'Watch for the red glint.'),
-  garage: def('garage', 'Snowmobile Garage', 'roadside', 1, 2, 'Every 3 days a snowmobile chases you round the loop.', 'Two-stroke, two goons.'),
+  cabin: def('cabin', 'Guard Cabin', 'roadside', 2, 1, 'Every descent, up to 2 guards walk out onto the trail within 2 tiles.', 'Smoke from the chimney. Bullets from the window.'),
+  sniper: def('sniper', 'Sniper Nest', 'roadside', 2, 2, 'A sniper fires from 2.5 tiles away. Drop him and another takes his place next descent.', 'Watch for the red glint.'),
+  garage: def('garage', 'Snowmobile Garage', 'roadside', 1, 2, 'Every descent, a snowmobile (sometimes two) chases you round the mountain.', 'Two-stroke, two goons.'),
   cache: def('cache', 'Supply Cache', 'roadside', 2, 1, 'Ski past to heal 20%, once a lap. +10 chips.', 'Hot cocoa and bandages.'),
   safehouse: def('safehouse', 'Safehouse', 'roadside', 1, 1, 'Ski past to draw a card and pick up 1 intel, once a lap.', 'The doormat says GO AWAY.'),
   pines: def('pines', 'Pine Grove', 'landscape', 3, 1, '+3% dodge. Every trail tile beside it pays 4 chips for the graze.', 'Close shaves pay.'),
   boulder: def('boulder', 'Boulder', 'landscape', 3, 1, '+4 max HP.', "It's a rock."),
   peak: def('peak', 'Peak', 'landscape', 2, 1, '+8 max HP. Fill a 3x3 with peaks and boulders for a Double Black Diamond.', 'Experts only.'),
-  powder: def('powder', 'Powder Field', 'landscape', 2, 1, 'Heals 3 HP a day, +1 for each pine grove beside it.', 'Face shots for days.'),
+  powder: def('powder', 'Powder Field', 'landscape', 2, 1, 'Heals 8 HP at the start of every lap, +2 for each pine grove beside it.', 'Face shots for days.'),
   avalanche: def('avalanche', 'Avalanche', 'special', 1, 0, 'Wipes out a placed tile and everything on and around it.', 'Not the snow you ordered.'),
   chairlift: def(
     'chairlift',
@@ -97,7 +97,7 @@ export const CARDS: Record<CardId, CardDef> = {
     'weather',
     1,
     1,
-    'For 3 days, everyone can only see 60% as far: you and them. Kills and grazes pay double chips.',
+    'For this lap and the next, everyone can only see 60% as far: you and them. Kills and grazes pay double chips.',
     'You can hear them. You just cannot see them.',
   ),
   night: def(
@@ -106,7 +106,7 @@ export const CARDS: Record<CardId, CardDef> = {
     'weather',
     1,
     1,
-    'For 3 days, enemies hit 40% less often and your aim drops 15%. Cards and gear drop half as often again.',
+    'For this lap and the next, enemies hit 40% less often and your aim drops 15%. Cards and gear drop half as often again.',
     'Black jacket optional.',
   ),
   dossierWidow: dossier(
@@ -118,7 +118,7 @@ export const CARDS: Record<CardId, CardDef> = {
   dossierYetiKing: dossier(
     'dossierYetiKing',
     'Dossier: Yeti King',
-    'Summons The Yeti King on this trail tile. He calls a yeti down every day he lives. Beat him for the Yeti Pelt.',
+    'Summons The Yeti King on this trail tile. He calls a yeti down every ten seconds he lives. Beat him for the Yeti Pelt.',
     'Long may he roar.',
   ),
   dossierKickback: dossier(
@@ -146,7 +146,7 @@ export type TileVariant = 'dbd' | 'dbdPart' | null;
 
 export interface TileState {
   card: CardId;
-  /** Days until the tile next does its thing (spawns, respawns). */
+  /** Spare counter for tiles that keep time (unused by most). */
   timer: number;
   /** Lap this tile last paid out (caches, safehouses). */
   lastLap: number;

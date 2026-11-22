@@ -7,9 +7,6 @@ export const MAP_W = 18;
 export const MAP_H = 10;
 export const TILE = 16;
 
-/** Tile effects (spawns, healing) trigger once per day. */
-export const DAY_SECONDS = 10;
-
 export const HAND_SIZE = 9;
 export const INVENTORY_SIZE = 10;
 export const MAX_ENEMIES_PER_TILE = 3;

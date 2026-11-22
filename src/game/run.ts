@@ -3,7 +3,7 @@
 // decision) are the only thing that enters, so a run replays exactly from its seed and commands.
 
 import { BOSS_OF, canPlace, CARDS, countAround, markDoubleBlacks, newTiles, ROUTE_OF, type CardId, type Tiles } from './cards';
-import { DAY_SECONDS, DT, HAND_SIZE, INVENTORY_SIZE, MAP_W, MAX_ENEMIES_PER_TILE } from './constants';
+import { DT, HAND_SIZE, INVENTORY_SIZE, MAP_W, MAX_ENEMIES_PER_TILE } from './constants';
 import { ENEMIES, isBoss, levelScale, RATINGS, type BossKind, type Enemy, type EnemyKind } from './enemies';
 import { rollGadget, rollItem, STARTER_GUN, uniqueReward, type Item, type Slot } from './items';
 import {
@@ -23,14 +23,15 @@ import {
 import { hashSeed, Rng, type RngState } from './rng';
 import { computeStats, hasGadget, NO_BONUSES, powderHeal, STANCES, type Equipment, type LodgeBonuses, type Stance, type Stats } from './stats';
 
-export const RUN_VERSION = 3;
+export const RUN_VERSION = 4;
 
 export type RunStatus = 'riding' | 'lodge' | 'won' | 'retreated' | 'bailed' | 'wiped';
 export type WeatherKind = 'whiteout' | 'night';
 
 /** How weather bends the rules while it lasts. */
 export const WEATHER = {
-  days: 3,
+  /** Laps it lasts, counting the one it starts in. */
+  laps: 2,
   whiteoutRange: 0.6,
   whiteoutChips: 2,
   nightEnemyAim: 0.6,
@@ -83,16 +84,14 @@ export interface RunState {
   descent: number;
   /** Descents in the current lap: more than one means you rode a lift instead of going home. */
   lapDescents: number;
-  day: number;
-  dayTimer: number;
   lapTime: number;
   /** How long this lap's route would take at a cruise, for the fast-lap bonus. */
   lapPar: number;
   boss: { meter: number; max: number; spawned: boolean };
   lapHand: LapHand;
   permanentMult: number;
-  /** The weather over the whole mountain, and how many more days it lasts. */
-  weather: { kind: WeatherKind; days: number } | null;
+  /** The weather over the whole mountain, and how many more laps it lasts (this one included). */
+  weather: { kind: WeatherKind; laps: number } | null;
   /** Intel fragments towards the next dossier (three make one). */
   fragments: number;
   cash: number;
@@ -130,7 +129,7 @@ export type RunEvent =
   | { type: 'heal'; amount: number; x: number; y: number }
   | { type: 'heroHit'; damage: number }
   | { type: 'lap'; lap: number; chips: number; mult: number; points: number; lines: HandLine[]; lapTime: number; descents: number }
-  | { type: 'day'; day: number }
+  | { type: 'wave'; lap: number; descent: number; count: number; chained: boolean }
   | { type: 'boss' }
   | { type: 'weather'; kind: WeatherKind | null }
   | { type: 'bossArrives'; kind: EnemyKind }
@@ -164,6 +163,21 @@ const DOSSIER_FOR: Record<BossKind, CardId> = { widow: 'dossierWidow', yetiKing:
 export const FRAGMENTS_PER_DOSSIER = 3;
 /** Cash for beating a dossier boss. */
 export const BOSS_BOUNTY = 1000;
+
+/** What enemy cards send at the start of each descent: inclusive ranges and chances. */
+export const SPAWNS = {
+  patrol: [1, 2] as const,
+  cabin: [0, 2] as const,
+  garageSecond: 0.4,
+  dbdYeti: 0.6,
+  maxChasers: 4,
+};
+
+/** Seconds between the Yeti King's calls. */
+const KING_CALL = 10;
+
+/** Each lap's own wave: `base` plus `perLap` a lap, plus up to `spread` more, at most `max`. */
+export const WAVE = { base: 2, perLap: 0.5, spread: 1, max: 8 };
 
 /** Offsets so up to three enemies on one tile stand apart. */
 const SLOT_OFFSETS = [
@@ -222,8 +236,6 @@ export class Run {
       lap: 1,
       descent: 1,
       lapDescents: 1,
-      day: 1,
-      dayTimer: 0,
       lapTime: 0,
       lapPar: 0,
       boss: { meter: 0, max: RATINGS[rating].boss, spawned: false },
@@ -241,6 +253,8 @@ export class Run {
     const run = new Run(state);
     state.hero.hp = run.stats.maxHp;
     for (let i = 0; i < 5; i++) run.drawCard();
+    // The mountain is never empty: the first lap's enemies are already out on the trail.
+    run.startDescent(true);
     run.events = [];
     return run;
   }
@@ -320,15 +334,10 @@ export class Run {
     if (st.status !== 'riding') return;
 
     this.stats = computeStats(st.equipment, st.tiles, st.bonuses);
-    st.dayTimer += DT;
-    if (st.dayTimer >= DAY_SECONDS) {
-      st.dayTimer -= DAY_SECONDS;
-      st.day++;
-      this.newDay();
-    }
     st.lapTime += DT;
     if (this.move()) return; // lap complete: the lodge decision waits
     this.heal();
+    this.abilities();
     this.combat();
     if (st.status === 'riding' && st.hero.hp <= 0) this.end('wiped');
   }
@@ -375,6 +384,7 @@ export class Run {
           st.lapTime = 0;
           st.lapPar = 0;
           st.hero.ride = { at: LODGE, to: this.choose(LODGE), f: 0 };
+          this.startDescent(true);
         }
         break;
       case 'retreat':
@@ -419,7 +429,7 @@ export class Run {
     const boss = BOSS_OF[card];
 
     if (card === 'whiteout' || card === 'night') {
-      st.weather = { kind: card, days: WEATHER.days };
+      st.weather = { kind: card, laps: WEATHER.laps };
       st.record.placed++;
       this.events.push({ type: 'weather', kind: card });
     } else if (boss) {
@@ -561,6 +571,7 @@ export class Run {
       home,
       cooldown: this.rng.range(0.4, def.interval),
     };
+    if (kind === 'yetiKing') enemy.ability = KING_CALL;
     st.enemies.push(enemy);
     this.events.push({ type: 'spawn', enemy: enemy.id, kind });
     return enemy;
@@ -595,69 +606,122 @@ export class Run {
     return best;
   }
 
-  private newDay(): void {
+  /** Trail nodes within `r` tiles of (x, y) (a square), with room for another enemy. */
+  private trailNear(x: number, y: number, r: number): number[] {
+    const out: number[] = [];
+    this.map.nodes.forEach((p, i) => {
+      if (!isPiste(this.map, i) || Math.max(Math.abs(p.x - x), Math.abs(p.y - y)) > r) return;
+      if (this.enemiesAt(cell(p.x, p.y)).length < MAX_ENEMIES_PER_TILE) out.push(i);
+    });
+    return out;
+  }
+
+  /**
+   * A new descent begins: at the lodge for a new lap, or partway down when you chain one with a
+   * lift. Every enemy card rolls how many to send and where, from the seeded generator, so you
+   * can plan for it but never quite count on it. A new lap also brings a wave of its own (the
+   * mountain is never empty, even on lap one), moves the weather on, and lets powder heal.
+   */
+  startDescent(newLap: boolean): void {
     const st = this.state;
-    this.events.push({ type: 'day', day: st.day });
-    if (st.weather && --st.weather.days <= 0) {
-      st.weather = null;
-      this.events.push({ type: 'weather', kind: null });
+    const rng = this.rng;
+    const before = st.enemies.length;
+    if (newLap) {
+      if (st.weather && --st.weather.laps <= 0) {
+        st.weather = null;
+        this.events.push({ type: 'weather', kind: null });
+      }
+      this.wildWave();
     }
-    const chasers = st.enemies.filter((e) => e.ride && e.kind === 'snowmobile').length;
+    let chasers = st.enemies.filter((e) => e.ride && e.kind === 'snowmobile').length;
     st.tiles.forEach((t, c) => {
       if (!t) return;
       const x = c % MAP_W;
       const y = Math.floor(c / MAP_W);
       switch (t.card) {
-        case 'patrol':
-          if (--t.timer <= 0) {
-            t.timer = 2;
-            this.spawn('guard', x, y, c);
-          }
-          break;
-        case 'cabin':
-          if (--t.timer <= 0) {
-            t.timer = 3;
-            const spots = this.trailNeighbours(x, y).filter((i) => {
-              const p = this.map.nodes[i];
-              return this.enemiesAt(cell(p.x, p.y)).length < MAX_ENEMIES_PER_TILE;
-            });
-            if (spots.length) {
-              const p = this.map.nodes[this.rng.pick(spots)];
-              this.spawn('guard', p.x, p.y, c);
-            }
-          }
-          break;
-        case 'garage':
-          if (--t.timer <= 0) {
-            t.timer = 3;
-            const spots = this.trailNeighbours(x, y);
-            if (spots.length && chasers < 4) this.spawn('snowmobile', x, y, c, this.rng.pick(spots));
-          }
-          break;
-        case 'sniper':
-          if (!st.enemies.some((e) => e.home === c) && --t.timer <= 0) {
-            t.timer = 3;
-            this.spawn('sniper', x, y, c);
-          }
-          break;
-        case 'powder': {
-          const amount = powderHeal(st.tiles, x, y);
-          st.hero.hp = Math.min(this.stats.maxHp, st.hero.hp + amount);
-          this.events.push({ type: 'heal', amount, x: x + 0.5, y: y + 0.5 });
+        case 'patrol': {
+          const n = rng.int(SPAWNS.patrol[0], SPAWNS.patrol[1] + 1);
+          for (let k = 0; k < n; k++) this.spawn('guard', x, y, c);
           break;
         }
+        case 'cabin': {
+          const n = rng.int(SPAWNS.cabin[0], SPAWNS.cabin[1] + 1);
+          for (let k = 0; k < n; k++) {
+            const spots = this.trailNear(x, y, 2);
+            if (!spots.length) break;
+            const p = this.map.nodes[rng.pick(spots)];
+            this.spawn('guard', p.x, p.y, c);
+          }
+          break;
+        }
+        case 'garage': {
+          const n = 1 + (rng.chance(SPAWNS.garageSecond) ? 1 : 0);
+          for (let k = 0; k < n && chasers < SPAWNS.maxChasers; k++) {
+            const spots = this.trailNeighbours(x, y);
+            if (!spots.length) break;
+            this.spawn('snowmobile', x, y, c, rng.pick(spots));
+            chasers++;
+          }
+          break;
+        }
+        case 'sniper':
+          if (!st.enemies.some((e) => e.home === c)) this.spawn('sniper', x, y, c);
+          break;
+        case 'powder':
+          if (newLap) {
+            const amount = powderHeal(st.tiles, x, y);
+            st.hero.hp = Math.min(this.stats.maxHp, st.hero.hp + amount);
+            this.events.push({ type: 'heal', amount, x: x + 0.5, y: y + 0.5 });
+          }
+          break;
       }
-      if (t.variant === 'dbd' && --t.timer <= 0) {
-        t.timer = 4;
+      if (t.variant === 'dbd' && rng.chance(SPAWNS.dbdYeti)) {
         const i = this.nearestTrail(x, y);
         if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, c);
       }
     });
-    // The Yeti King calls one of his subjects down every day.
-    for (const king of st.enemies.filter((e) => e.kind === 'yetiKing' && e.hp > 0)) {
-      const i = this.nearestTrail(Math.floor(king.x), Math.floor(king.y));
-      if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, -1);
+    this.events.push({ type: 'wave', lap: st.lap, descent: st.descent, count: st.enemies.length - before, chained: !newLap });
+  }
+
+  /**
+   * Each lap's own wave: a few enemies scattered over the trail in ones and twos, more as the laps
+   * go by. Never right by the lodge, so a lap always starts with a moment to breathe.
+   */
+  private wildWave(): void {
+    const st = this.state;
+    const rng = this.rng;
+    const lodge = this.map.nodes[LODGE];
+    let left = Math.min(WAVE.max, WAVE.base + Math.floor((st.lap - 1) * WAVE.perLap) + rng.int(0, WAVE.spread + 1));
+    for (let tries = 0; left > 0 && tries < 20; tries++) {
+      const spots = this.map.nodes
+        .map((_, i) => i)
+        .filter((i) => {
+          const p = this.map.nodes[i];
+          return isPiste(this.map, i) && Math.max(Math.abs(p.x - lodge.x), Math.abs(p.y - lodge.y)) > 2 && this.enemiesAt(cell(p.x, p.y)).length === 0;
+        });
+      if (!spots.length) break;
+      const p = this.map.nodes[rng.pick(spots)];
+      const chasers = st.enemies.filter((e) => e.ride).length;
+      if (st.lap >= 3 && chasers < SPAWNS.maxChasers && rng.chance(0.2)) {
+        this.spawn('snowmobile', p.x, p.y, -1, nodeAt(this.map, p.x, p.y));
+        left--;
+        continue;
+      }
+      const group = Math.min(left, rng.chance(0.4) ? 2 : 1);
+      for (let k = 0; k < group; k++) this.spawn('guard', p.x, p.y, -1);
+      left -= group;
     }
+  }
+
+  /** How far round the lap the skier is, from 0 at the lodge to 1 back there. */
+  lapProgress(): number {
+    const map = this.map;
+    let i = this.heroNode();
+    if (i >= map.loopLength) {
+      const seg = [...map.lifts, ...map.chutes].find((s) => s.nodes.includes(i));
+      i = seg ? seg.from : 0;
+    }
+    return i / map.loopLength;
   }
 
   // --- Movement and the lap -----------------------------------------------------------------
@@ -719,6 +783,8 @@ export class Run {
     this.line('Chained descents', 0, mult);
     const me = this.heroPos();
     this.events.push({ type: 'chain', descents: st.lapDescents, x: me.x, y: me.y });
+    // Another descent, another round from every enemy card, a level tougher.
+    this.startDescent(false);
   }
 
   private enterTile(i: number): void {
@@ -839,6 +905,22 @@ export class Run {
     let rate = this.stats.regen;
     if (p.kind === 'lift') rate += 2 * (hasGadget(st.equipment, 'liftPass') ? 3 : 1);
     st.hero.hp = Math.min(this.stats.maxHp, st.hero.hp + rate * DT);
+  }
+
+  /** Special moves on their own timers. */
+  private abilities(): void {
+    const st = this.state;
+    for (const e of [...st.enemies]) {
+      if (e.hp <= 0 || e.ability === undefined) continue;
+      e.ability -= DT;
+      if (e.ability > 0) continue;
+      if (e.kind === 'yetiKing') {
+        // The Yeti King calls one of his subjects down.
+        e.ability = KING_CALL;
+        const i = this.nearestTrail(Math.floor(e.x), Math.floor(e.y));
+        if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, -1);
+      }
+    }
   }
 
   private combat(): void {

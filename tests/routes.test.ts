@@ -345,18 +345,18 @@ describe('dossier bosses', () => {
 });
 
 describe('weather', () => {
-  it('lasts three days, then clears', () => {
+  it('lasts this lap and the next, then clears', () => {
     const run = Run.create({ seed: 'alpine', deck: STARTER_DECK });
     run.state.hand.unshift('night');
     run.step([{ type: 'place', hand: 0, x: 0, y: 0 }]);
-    expect(run.state.weather).toEqual({ kind: 'night', days: 3 });
+    expect(run.state.weather).toEqual({ kind: 'night', laps: 2 });
     const events = ride(
       run,
       () => run.state.weather === null,
       () => (run.state.status === 'lodge' ? [{ type: 'rideAgain' }] : []),
     );
     expect(events.some((e) => e.type === 'weather' && e.kind === null)).toBe(true);
-    expect(run.state.day).toBe(4);
+    expect(run.state.lap).toBe(3);
   });
 
   it('a whiteout keeps a guard just out of sight from shooting, and doubles kill chips', () => {

@@ -107,7 +107,8 @@ describe('cards', () => {
   it('a patrol post fields a guard straight away', () => {
     const run = newRun();
     placeAnywhere(run, 'patrol', (_x, y) => y > 4);
-    expect(run.state.enemies.filter((e) => e.kind === 'guard')).toHaveLength(1);
+    const post = run.state.tiles.findIndex((t) => t?.card === 'patrol');
+    expect(run.state.enemies.filter((e) => e.kind === 'guard' && e.home === post)).toHaveLength(1);
   });
 });
 

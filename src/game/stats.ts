@@ -70,5 +70,5 @@ export function computeStats(equipment: Equipment, tiles: Tiles, bonuses: LodgeB
 export const hasGadget = (equipment: Equipment, g: GadgetId): boolean =>
   equipment.gadget1?.gadget === g || equipment.gadget2?.gadget === g;
 
-/** Healing a Powder Field gives each day. */
-export const powderHeal = (tiles: Tiles, x: number, y: number): number => 3 + countAround(tiles, x, y, 'pines');
+/** Healing a Powder Field gives at the start of each lap. */
+export const powderHeal = (tiles: Tiles, x: number, y: number): number => 8 + 2 * countAround(tiles, x, y, 'pines');

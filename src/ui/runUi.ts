@@ -2,7 +2,7 @@
 // chips × mult), the hand of cards, tooltips, and pops over the map.
 
 import { CARDS, type CardId, type CardKind } from '../game/cards';
-import { DAY_SECONDS, MAP_W } from '../game/constants';
+import { MAP_W } from '../game/constants';
 import { ENEMIES } from '../game/enemies';
 import { GADGETS, RARITY_NAMES, type Item, type Slot, type StatKey } from '../game/items';
 import { nodeAt } from '../game/map';
@@ -212,10 +212,10 @@ export class RunUi {
     this.currentRun = run;
     const st = run.state;
     const stats = run.stats;
-    this.text('day', String(st.day));
-    $('day-fill').style.width = `${Math.min(100, (st.dayTimer / DAY_SECONDS) * 100).toFixed(1)}%`;
     this.text('lap', String(st.lap));
     this.text('descent', String(st.descent));
+    $('lap-fill').style.width = `${(st.status === 'lodge' ? 100 : run.lapProgress() * 100).toFixed(1)}%`;
+    this.text('enemy-count', String(st.enemies.length));
     this.text('boss-count', st.boss.spawned ? 'HERE!' : `${st.boss.meter}/${st.boss.max}`);
     $('boss-fill').style.width = `${Math.min(100, (st.boss.meter / st.boss.max) * 100).toFixed(1)}%`;
     document.querySelector('.tb.boss')!.classList.toggle('hot', st.boss.spawned || st.boss.meter >= st.boss.max * 0.75);
@@ -224,7 +224,7 @@ export class RunUi {
     this.text('run-scrap', String(st.scrap));
     const weather = st.weather;
     document.querySelector('.tb.weather')!.classList.toggle('hidden', !weather);
-    if (weather) this.text('weather-text', `${weather.kind === 'night' ? 'Night' : 'Whiteout'} · ${weather.days}d`);
+    if (weather) this.text('weather-text', `${weather.kind === 'night' ? 'Night' : 'Whiteout'} · ${weather.laps === 1 ? 'this lap' : `${weather.laps} laps`}`);
     this.text('run-frag', st.routes.some((r) => r.kind === 'lift') ? `${st.fragments}/3` : 'build a lift');
     document.querySelectorAll<HTMLButtonElement>('.tb.speed button').forEach((b) =>
       b.classList.toggle('on', Number(b.dataset.speed) === speed),
@@ -447,7 +447,7 @@ export class RunUi {
     if (t) {
       const def = CARDS[t.card];
       const name = t.variant === 'dbd' ? 'Double Black Diamond' : def.name;
-      const text = t.variant === 'dbd' ? '+40 max HP. A yeti comes down every 4 days.' : def.text;
+      const text = t.variant === 'dbd' ? '+40 max HP. A yeti comes down most descents.' : def.text;
       parts.push(`<span class="kind">${KIND_LABEL[def.kind]}</span><b>${name}</b>${text}`);
     }
     const i = nodeAt(run.map, tile.x, tile.y);

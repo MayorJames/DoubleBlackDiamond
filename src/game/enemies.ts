@@ -54,7 +54,7 @@ export const BOSS_INFO: Record<'baron' | BossKind, { epithet: string; text: stri
   },
   yetiKing: {
     epithet: 'Long may he roar',
-    text: 'Holds his tile and hits like an avalanche up close. Every day he lives, another yeti comes down to the trail.',
+    text: 'Holds his tile and hits like an avalanche up close. Every ten seconds he lives, another yeti comes down to the trail.',
     reward: 'Drops the Yeti Pelt: +45 max HP, +1 regen, +3 defense. Plus a $1,000 bounty.',
   },
   kickback: {
@@ -78,6 +78,8 @@ export interface Enemy {
   /** Grid cell of the tile that spawned it (for respawns), or -1. */
   home: number;
   cooldown: number;
+  /** Seconds until its special move (a boss's call, a medic's heal), for those that have one. */
+  ability?: number;
 }
 
 /** Stat multiplier for an enemy's level (the descent it arrived on) and the trail rating. */

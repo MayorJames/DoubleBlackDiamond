@@ -352,9 +352,13 @@ export class App {
           break;
         case 'boss':
           break;
+        case 'wave':
+          if (e.count > 0 && e.chained) this.runUi.pop(`+${e.count} enemies: descent ${e.descent}`, run.heroPos().x, run.heroPos().y - 1.8, 'red');
+          else if (e.count > 0) this.runUi.banner(`Lap ${e.lap}: ${e.count} enem${e.count === 1 ? 'y' : 'ies'} out on the mountain`);
+          break;
         case 'weather':
-          if (e.kind === 'whiteout') this.runUi.banner('Whiteout! Nobody can see far for 3 days. Kills and grazes pay double.');
-          else if (e.kind === 'night') this.runUi.banner('Night falls. Enemies miss more, loot drops more, for 3 days.');
+          if (e.kind === 'whiteout') this.runUi.banner('Whiteout! Nobody can see far, this lap and next. Kills and grazes pay double.');
+          else if (e.kind === 'night') this.runUi.banner('Night falls. Enemies miss more and loot drops more, this lap and next.');
           else this.runUi.banner('The weather clears.');
           this.sfx.chime();
           break;
@@ -444,11 +448,10 @@ export class App {
       ['Laps', String(st.status === 'retreated' || st.status === 'won' ? st.lap : st.lap - 1)],
       ['Descents', String(st.record.descents)],
       ['Routes built', String(st.routes.length)],
-      ['Guards down', String(st.record.kills)],
+      ['Enemies down', String(st.record.kills)],
       ['Best lap', formatCash(st.record.bestLap)],
       ['Cards placed', String(st.record.placed)],
       ['Loot found', String(st.record.items)],
-      ['Days', String(st.day)],
     ];
     setTimeout(() => this.overlays.showResult(st.status, st.payout!, st.rating, record, this.unlockedRating), won || st.status === 'wiped' ? 900 : 200);
   }
