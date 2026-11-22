@@ -86,6 +86,7 @@ export class App {
     );
     this.lodgeUi.setSeed(seedFromUrl() ?? randomSeed());
     this.lodgeUi.render(this.profile);
+    this.lodgeUi.scene.start();
     this.bindInput();
     this.loop.start();
   }
@@ -103,6 +104,7 @@ export class App {
     this.prevChasers.clear();
     document.getElementById('lodge-screen')!.classList.add('hidden');
     document.getElementById('run-screen')!.classList.remove('hidden');
+    this.lodgeUi.scene.stop();
     this.renderer.resize();
     this.renderer.setRun(this.run);
     this.setSpeed(1);
@@ -122,6 +124,7 @@ export class App {
     document.getElementById('lodge-screen')!.classList.remove('hidden');
     this.lodgeUi.setSeed(randomSeed());
     this.lodgeUi.render(this.profile);
+    this.lodgeUi.scene.start();
   }
 
   private build(id: BuildingId): void {
@@ -130,6 +133,7 @@ export class App {
       this.sfx.unlock();
       this.sfx.chaChing();
       this.lodgeUi.render(this.profile);
+      this.lodgeUi.scene.celebrate(id);
     }
   }
 

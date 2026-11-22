@@ -3,10 +3,10 @@
 
 import { CARDS } from '../game/cards';
 import { RATINGS } from '../game/enemies';
-import { BUILDINGS, canAfford, DECK_MAX, DECK_MIN, deckFor, unlockedCards, type BuildingId, type Profile } from '../game/lodge';
+import { BUILDINGS, canAfford, type Building, DECK_MAX, DECK_MIN, deckFor, unlockedCards, type BuildingId, type Profile } from '../game/lodge';
 import type { CardId } from '../game/cards';
-import { spriteUrl, type SpriteName } from '../render/sprites';
 import { cardArtUrl } from '../render/art/cardArt';
+import { buildingIcon, LodgeScene } from '../render/art/lodgeScene';
 import { formatCash } from './runUi';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -22,8 +22,11 @@ export interface LodgeHooks {
 
 export class LodgeUi {
   rating = 0;
+  /** The pixel panorama at the top of the lodge. */
+  readonly scene = new LodgeScene($<HTMLCanvasElement>('lodge-scene'));
 
   constructor(hooks: LodgeHooks) {
+    this.bindScene();
     $('seed-random').addEventListener('click', () => {
       $<HTMLInputElement>('seed-input').value = hooks.newSeed();
     });
@@ -49,12 +52,54 @@ export class LodgeUi {
 
   private lastProfile: Profile | null = null;
 
+  /** Hovering a building in the scene names it; clicking jumps to its card. */
+  private bindScene(): void {
+    const canvas = this.scene.canvas;
+    const tip = $('scene-tip');
+    const at = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect();
+      return this.scene.plotAt(e.clientX - r.left, e.clientY - r.top);
+    };
+    canvas.addEventListener('mousemove', (e) => {
+      const id = at(e);
+      this.scene.hover = id;
+      canvas.classList.toggle('over-plot', !!id);
+      const b = id && BUILDINGS.find((x) => x.id === id);
+      if (!b || !this.lastProfile) {
+        tip.classList.add('hidden');
+        return;
+      }
+      const built = this.lastProfile.built.includes(b.id);
+      tip.innerHTML = `<span class="kind">${built ? 'Built' : 'Empty plot'}</span><b>${b.name}</b>${b.text}${
+        built ? '' : `<span class="kind">${costText(b)} · click to find it below</span>`
+      }`;
+      tip.classList.remove('hidden');
+      tip.style.left = `${Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 14)}px`;
+      tip.style.top = `${Math.min(window.innerHeight - tip.offsetHeight - 8, e.clientY + 14)}px`;
+    });
+    canvas.addEventListener('mouseleave', () => {
+      this.scene.hover = null;
+      tip.classList.add('hidden');
+    });
+    canvas.addEventListener('click', (e) => {
+      const id = at(e);
+      const card = id && document.querySelector<HTMLElement>(`.building[data-building="${id}"]`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.remove('flash');
+      void card.offsetWidth;
+      card.classList.add('flash');
+    });
+    window.addEventListener('resize', () => this.scene.resize());
+  }
+
   setSeed(seed: string): void {
     $<HTMLInputElement>('seed-input').value = seed;
   }
 
   render(p: Profile): void {
     this.lastProfile = p;
+    this.scene.setBuilt(p.built);
     this.rating = Math.min(this.rating, p.rating);
     $('p-cash').textContent = formatCash(p.cash);
     $('p-intel').textContent = String(p.intel);
@@ -87,11 +132,9 @@ export class LodgeUi {
         const built = p.built.includes(b.id);
         const el = document.createElement('div');
         el.className = `building${built ? ' built' : ''}`;
-        const cost = [formatCash(b.cost.cash), b.cost.intel ? `${b.cost.intel} intel` : '', b.cost.scrap ? `${b.cost.scrap} scrap` : '']
-          .filter(Boolean)
-          .join(' · ');
-        // Built buildings flip to white-on-ink; red stays red.
-        const icon = spriteUrl(b.icon as SpriteName, 3, built ? { k: 'w', d: 'l', m: 'l', w: 'k', s: 'd', l: 'm' } : undefined);
+        el.dataset.building = b.id;
+        const cost = costText(b);
+        const icon = buildingIcon(b.id, true, 2);
         el.innerHTML = `<img alt="" src="${icon}"><b>${b.name}</b><p>${b.text}</p><span class="cost">${built ? 'Built' : cost}</span>`;
         if (!built) {
           const btn = document.createElement('button');
@@ -122,3 +165,6 @@ export class LodgeUi {
     );
   }
 }
+
+const costText = (b: Building): string =>
+  [formatCash(b.cost.cash), b.cost.intel ? `${b.cost.intel} intel` : '', b.cost.scrap ? `${b.cost.scrap} scrap` : ''].filter(Boolean).join(' · ');

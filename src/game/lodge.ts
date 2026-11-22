@@ -15,19 +15,17 @@ export interface Building {
   cost: { cash: number; intel: number; scrap: number };
   text: string;
   unlocks: CardId[];
-  /** Sprite to show for it. */
-  icon: string;
 }
 
 export const BUILDINGS: Building[] = [
-  { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute card: a steep shortcut straight down the mountain.', unlocks: ['chute'], icon: 'chute' },
-  { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache and Powder Field cards.', unlocks: ['cache', 'powder'], icon: 'cache' },
-  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest and Snowmobile Garage. More danger, more loot.', unlocks: ['sniper', 'garage'], icon: 'sniper' },
-  { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks Kicker and Ice Sheet cards.', unlocks: ['kicker', 'ice'], icon: 'kicker' },
-  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak and Avalanche cards.', unlocks: ['peak', 'avalanche'], icon: 'peak' },
-  { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks the Safehouse card, gadget drops and a second gadget slot.', unlocks: ['safehouse'], icon: 'safehouse' },
-  { id: 'rental', name: 'Rental Shop', cost: { cash: 700, intel: 0, scrap: 10 }, text: '+10% speed, and better gear drops.', unlocks: [], icon: 'garage' },
-  { id: 'sauna', name: 'Sauna', cost: { cash: 800, intel: 6, scrap: 6 }, text: '+25% max HP.', unlocks: [], icon: 'cabin' },
+  { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute card: a steep shortcut straight down the mountain.', unlocks: ['chute'] },
+  { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache and Powder Field cards.', unlocks: ['cache', 'powder'] },
+  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest and Snowmobile Garage. More danger, more loot.', unlocks: ['sniper', 'garage'] },
+  { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks Kicker and Ice Sheet cards.', unlocks: ['kicker', 'ice'] },
+  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak and Avalanche cards.', unlocks: ['peak', 'avalanche'] },
+  { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks the Safehouse card, gadget drops and a second gadget slot.', unlocks: ['safehouse'] },
+  { id: 'rental', name: 'Rental Shop', cost: { cash: 700, intel: 0, scrap: 10 }, text: '+10% speed, and better gear drops.', unlocks: [] },
+  { id: 'sauna', name: 'Sauna', cost: { cash: 800, intel: 6, scrap: 6 }, text: '+25% max HP.', unlocks: [] },
 ];
 
 /** Cards you own from the start. */

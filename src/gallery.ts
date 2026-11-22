@@ -2,7 +2,10 @@
 // Not part of the game build (only index.html is an entry point).
 
 import { CARDS, CARD_IDS } from './game/cards';
+import { BUILDINGS, type BuildingId } from './game/lodge';
 import { cardArtUrl } from './render/art/cardArt';
+import { sceneStill } from './render/art/lodgeScene';
+import { scaled } from './render/art/pixel';
 
 const root = document.getElementById('gallery')!;
 
@@ -27,3 +30,7 @@ section(
   'Cards (4x)',
   CARD_IDS.map((id) => ({ label: CARDS[id].name, el: img(cardArtUrl(id, 4)) })),
 );
+
+const still = (built: BuildingId[]) => scaled(sceneStill(built), 3);
+section('Lodge scene, nothing built (3x)', [{ label: 'Fresh lodge', el: still([]) }]);
+section('Lodge scene, everything built (3x)', [{ label: 'Fully built', el: still(BUILDINGS.map((b) => b.id)) }]);
