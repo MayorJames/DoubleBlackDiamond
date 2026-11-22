@@ -1,5 +1,7 @@
 // The opposition. Guards hold their tiles, snipers sit in nests, snowmobiles and the boss
-// chase you round the loop. Everything levels up with each lap.
+// chase you round the mountain. Everything levels up with each descent.
+
+import type { Ride } from './map';
 
 export type EnemyKind = 'guard' | 'sniper' | 'snowmobile' | 'yeti' | 'baron';
 
@@ -14,7 +16,7 @@ export interface EnemyDef {
   accuracy: number;
   evasion: number;
   chips: number;
-  /** Tiles per second along the loop, for chasers; 0 for enemies that hold a tile. */
+  /** Tiles per second along the path, for chasers; 0 for enemies that hold a tile. */
   speed: number;
   /** Resources dropped on a kill. Below 1 it is the chance of dropping one. */
   intel: number;
@@ -40,14 +42,14 @@ export interface Enemy {
   /** Position in tiles (centre of the tile plus a small offset). */
   x: number;
   y: number;
-  /** Distance along the loop for chasers, -1 for enemies that hold a tile. */
-  s: number;
+  /** Where a chaser is on the mountain; null for enemies that hold a tile. */
+  ride: Ride | null;
   /** Grid cell of the tile that spawned it (for respawns), or -1. */
   home: number;
   cooldown: number;
 }
 
-/** Stat multiplier for an enemy's level (the lap it was spawned on) and the trail rating. */
+/** Stat multiplier for an enemy's level (the descent it arrived on) and the trail rating. */
 export const levelScale = (level: number, rating: number) => ({
   hp: (1 + 0.3 * (level - 1)) * RATINGS[rating].enemy,
   damage: (1 + 0.2 * (level - 1)) * RATINGS[rating].enemy,

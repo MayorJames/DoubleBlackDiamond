@@ -1,16 +1,29 @@
-// One expedition: the skier loops the mountain while you build it with cards. Everything here
-// is deterministic. Commands (stance, placing a card, equipping, the lodge decision) are the
-// only thing that enters, once per tick, so a run replays exactly from its seed and commands.
+// One expedition: the skier skis the mountain while you build it with cards. Everything here
+// is deterministic. Commands (stance, placing a card, flipping a junction, equipping, the lodge
+// decision) are the only thing that enters, so a run replays exactly from its seed and commands.
 
-import { canPlace, CARDS, countAround, markDoubleBlacks, newTiles, type CardId, type Tiles } from './cards';
+import { canPlace, CARDS, countAround, markDoubleBlacks, newTiles, ROUTE_OF, type CardId, type Tiles } from './cards';
 import { DAY_SECONDS, DT, HAND_SIZE, INVENTORY_SIZE, MAP_W, MAX_ENEMIES_PER_TILE } from './constants';
 import { ENEMIES, levelScale, RATINGS, type Enemy, type EnemyKind } from './enemies';
 import { rollGadget, rollItem, STARTER_GUN, type Item, type Slot } from './items';
-import { cell, generateMap, neighbours, pathIndexAt, pathPos, tileAt, type LoopMap } from './map';
+import {
+  cell,
+  dirOf,
+  generateMap,
+  isPiste,
+  LODGE,
+  neighbours,
+  nodeAt,
+  rideNode,
+  ridePos,
+  type MountainMap,
+  type Ride,
+  type Route,
+} from './map';
 import { hashSeed, Rng, type RngState } from './rng';
 import { computeStats, hasGadget, NO_BONUSES, powderHeal, STANCES, type Equipment, type LodgeBonuses, type Stance, type Stats } from './stats';
 
-export const RUN_VERSION = 1;
+export const RUN_VERSION = 2;
 
 export type RunStatus = 'riding' | 'lodge' | 'won' | 'retreated' | 'bailed' | 'wiped';
 
@@ -44,7 +57,9 @@ export interface RunState {
   tick: number;
   rng: RngState;
   tiles: Tiles;
-  hero: { s: number; hp: number; stance: Stance; cooldown: number; airborne: boolean };
+  /** Lifts and chutes you've built, in the order you built them, with their junction switches. */
+  routes: Route[];
+  hero: { ride: Ride; hp: number; stance: Stance; cooldown: number; airborne: boolean };
   enemies: Enemy[];
   nextId: number;
   hand: CardId[];
@@ -53,16 +68,22 @@ export interface RunState {
   equipment: Equipment;
   bonuses: LodgeBonuses;
   lap: number;
+  /** Descents so far this expedition, counting the one under way. New enemies arrive at this level. */
+  descent: number;
+  /** Descents in the current lap: more than one means you rode a lift instead of going home. */
+  lapDescents: number;
   day: number;
   dayTimer: number;
   lapTime: number;
+  /** How long this lap's route would take at a cruise, for the fast-lap bonus. */
+  lapPar: number;
   boss: { meter: number; max: number; spawned: boolean };
   lapHand: LapHand;
   permanentMult: number;
   cash: number;
   intel: number;
   scrap: number;
-  record: { kills: number; bestLap: number; placed: number; items: number };
+  record: { kills: number; bestLap: number; placed: number; items: number; descents: number };
   status: RunStatus;
   payout: Payout | null;
 }
@@ -71,6 +92,7 @@ export type Command =
   | { type: 'stance'; stance: Stance }
   | { type: 'place'; hand: number; x: number; y: number }
   | { type: 'burn'; hand: number }
+  | { type: 'switch'; route: number }
   | { type: 'equip'; item: number }
   | { type: 'salvage'; item: number }
   | { type: 'rideAgain' }
@@ -83,13 +105,16 @@ export type RunEvent =
   | { type: 'kill'; enemy: number; kind: EnemyKind; x: number; y: number; chips: number }
   | { type: 'spawn'; enemy: number; kind: EnemyKind }
   | { type: 'placed'; card: CardId; x: number; y: number }
+  | { type: 'route'; route: number; x: number; y: number }
+  | { type: 'switch'; route: number; take: boolean }
+  | { type: 'chain'; descents: number; x: number; y: number }
   | { type: 'avalanche'; x: number; y: number }
   | { type: 'doubleBlack'; x: number; y: number }
   | { type: 'chips'; label: string; chips: number; mult: number; x: number; y: number }
   | { type: 'loot'; what: 'card' | 'item' | 'intel' | 'scrap'; label: string; x: number; y: number }
   | { type: 'heal'; amount: number; x: number; y: number }
   | { type: 'heroHit'; damage: number }
-  | { type: 'lap'; lap: number; chips: number; mult: number; points: number; lines: HandLine[]; lapTime: number }
+  | { type: 'lap'; lap: number; chips: number; mult: number; points: number; lines: HandLine[]; lapTime: number; descents: number }
   | { type: 'day'; day: number }
   | { type: 'boss' }
   | { type: 'discard'; card: CardId }
@@ -117,10 +142,21 @@ const SLOT_OFFSETS = [
   [0.26, -0.18],
 ];
 
+/** Tuning for the route network. */
+export const ROUTE_TUNING = {
+  /** Mult for each extra descent chained in one lap (riding a lift instead of going home). */
+  chainMult: 1,
+  /** Mult for each chute tile, at any stance. */
+  steepMult: 0.2,
+  /** Aim in a chute. */
+  chuteAim: 0.85,
+};
+
 const freshHand = (permanentMult: number): LapHand => ({ chips: 0, mult: 1 + permanentMult, combo: 0, lines: [] });
 
 export class Run {
-  readonly map: LoopMap;
+  /** Rebuilt whenever a route is placed; compare by identity to notice. */
+  map: MountainMap;
   readonly state: RunState;
   /** Stats as of the last tick, for the HUD. */
   stats: Stats;
@@ -129,7 +165,7 @@ export class Run {
 
   private constructor(state: RunState) {
     this.state = state;
-    this.map = generateMap(state.seed);
+    this.map = generateMap(state.seed, state.routes);
     this.rng = new Rng(state.rng);
     this.stats = computeStats(state.equipment, state.tiles, state.bonuses);
   }
@@ -144,7 +180,8 @@ export class Run {
       tick: 0,
       rng: hashSeed(`run:${options.seed}`),
       tiles: newTiles(),
-      hero: { s: 0, hp: 0, stance: 'cruise', cooldown: 0, airborne: false },
+      routes: [],
+      hero: { ride: { at: LODGE, to: 1, f: 0 }, hp: 0, stance: 'cruise', cooldown: 0, airborne: false },
       enemies: [],
       nextId: 1,
       hand: [],
@@ -153,16 +190,19 @@ export class Run {
       equipment: { gun: STARTER_GUN(0), skis: null, goggles: null, jacket: null, gadget1: null, gadget2: null },
       bonuses,
       lap: 1,
+      descent: 1,
+      lapDescents: 1,
       day: 1,
       dayTimer: 0,
       lapTime: 0,
+      lapPar: 0,
       boss: { meter: 0, max: RATINGS[rating].boss, spawned: false },
       lapHand: freshHand(0),
       permanentMult: 0,
       cash: 0,
       intel: 0,
       scrap: 0,
-      record: { kills: 0, bestLap: 0, placed: 0, items: 0 },
+      record: { kills: 0, bestLap: 0, placed: 0, items: 0, descents: 0 },
       status: 'riding',
       payout: null,
     };
@@ -195,11 +235,40 @@ export class Run {
   }
 
   heroPos(): { x: number; y: number } {
-    return pathPos(this.map, this.state.hero.s);
+    return ridePos(this.map, this.state.hero.ride);
+  }
+
+  /** The node the skier is on. */
+  heroNode(): number {
+    return rideNode(this.state.hero.ride);
   }
 
   canPlace(card: CardId, x: number, y: number): boolean {
     return canPlace(this.map, this.state.tiles, card, x, y);
+  }
+
+  /** Where a junction sends you from node `at`. */
+  choose(at: number): number {
+    const n = this.map.nodes[at];
+    return n.next.length > 1 && this.state.routes[n.junction]?.take ? n.next[1] : n.next[0];
+  }
+
+  /** The next junction ahead of the skier along the way the switches point, if any. */
+  nextJunction(): number {
+    let at = this.state.hero.ride.to;
+    for (let k = 0; k < this.map.nodes.length; k++) {
+      const n = this.map.nodes[at];
+      if (n.junction >= 0) return n.junction;
+      if (at === LODGE && k > 0) return -1;
+      at = this.choose(at);
+    }
+    return -1;
+  }
+
+  /** The route that branches off at cell (x, y), or -1. */
+  junctionAt(x: number, y: number): number {
+    const i = nodeAt(this.map, x, y);
+    return i >= 0 ? this.map.nodes[i].junction : -1;
   }
 
   // --- The tick -----------------------------------------------------------------------------
@@ -248,6 +317,14 @@ export class Run {
           st.intel++;
         }
         break;
+      case 'switch': {
+        const r = st.routes[c.route];
+        if (live && r) {
+          r.take = !r.take;
+          this.events.push({ type: 'switch', route: c.route, take: r.take });
+        }
+        break;
+      }
       case 'equip':
         if (live) this.equip(c.item);
         break;
@@ -261,8 +338,11 @@ export class Run {
         if (st.status === 'lodge') {
           st.status = 'riding';
           st.lap++;
+          st.descent++;
+          st.lapDescents = 1;
           st.lapTime = 0;
-          st.hero.s = 0;
+          st.lapPar = 0;
+          st.hero.ride = { at: LODGE, to: this.choose(LODGE), f: 0 };
         }
         break;
       case 'retreat':
@@ -303,10 +383,18 @@ export class Run {
     st.hand.splice(handIndex, 1);
     const c = cell(x, y);
     const before = this.stats.maxHp;
+    const route = ROUTE_OF[card];
 
-    if (card === 'avalanche') {
+    if (route) {
+      // New routes open straight away: the switch starts on the route you just built.
+      st.routes.push({ kind: route, x, y, take: true });
+      this.map = generateMap(st.seed, st.routes);
+      st.record.placed++;
+      this.events.push({ type: 'placed', card, x, y });
+      this.events.push({ type: 'route', route: st.routes.length - 1, x, y });
+    } else if (card === 'avalanche') {
       st.tiles[c] = null;
-      st.enemies = st.enemies.filter((e) => e.s >= 0 || Math.abs(e.x - (x + 0.5)) > 1.5 || Math.abs(e.y - (y + 0.5)) > 1.5);
+      st.enemies = st.enemies.filter((e) => e.ride || Math.abs(e.x - (x + 0.5)) > 1.5 || Math.abs(e.y - (y + 0.5)) > 1.5);
       markDoubleBlacks(st.tiles);
       this.events.push({ type: 'avalanche', x, y });
     } else {
@@ -330,7 +418,7 @@ export class Run {
     st.boss.meter += CARDS[card].boss;
     if (!st.boss.spawned && st.boss.meter >= st.boss.max) {
       st.boss.spawned = true;
-      const top = this.map.path[this.map.summit];
+      const top = this.map.nodes[this.map.summit];
       this.spawn('baron', top.x, top.y, -1, this.map.summit);
       this.events.push({ type: 'boss' });
     }
@@ -358,15 +446,17 @@ export class Run {
 
   /** Enemies holding the tile at cell c. */
   enemiesAt(c: number): Enemy[] {
-    return this.state.enemies.filter((e) => e.s < 0 && cell(Math.floor(e.x), Math.floor(e.y)) === c);
+    return this.state.enemies.filter((e) => !e.ride && cell(Math.floor(e.x), Math.floor(e.y)) === c);
   }
 
-  private spawn(kind: EnemyKind, x: number, y: number, home: number, s = -1): Enemy | null {
+  /** Spawns an enemy holding tile (x, y), or, given a node, chasing along the path from there. */
+  private spawn(kind: EnemyKind, x: number, y: number, home: number, from = -1): Enemy | null {
     const st = this.state;
     const def = ENEMIES[kind];
     let ex = x + 0.5;
     let ey = y + 0.5;
-    if (s < 0) {
+    let ride: Ride | null = null;
+    if (from < 0) {
       const here = this.enemiesAt(cell(x, y));
       if (here.length >= MAX_ENEMIES_PER_TILE) return null;
       const used = new Set(here.map((e) => `${(e.x - x - 0.5).toFixed(2)}`));
@@ -374,12 +464,13 @@ export class Run {
       ex += off[0];
       ey += off[1];
     } else {
-      const p = pathPos(this.map, s);
+      ride = { at: from, to: this.choose(from), f: 0 };
+      const p = ridePos(this.map, ride);
       ex = p.x;
       ey = p.y;
     }
-    // The boss has fixed stats; everything else levels up with the lap it arrives on.
-    const level = kind === 'baron' ? 1 : st.lap;
+    // The boss has fixed stats; everything else levels up with the descent it arrives on.
+    const level = kind === 'baron' ? 1 : st.descent;
     const scale = levelScale(level, st.rating);
     const enemy: Enemy = {
       id: st.nextId++,
@@ -389,7 +480,7 @@ export class Run {
       maxHp: Math.round(def.hp * scale.hp),
       x: ex,
       y: ey,
-      s,
+      ride,
       home,
       cooldown: this.rng.range(0.4, def.interval),
     };
@@ -398,16 +489,17 @@ export class Run {
     return enemy;
   }
 
+  /** Trail nodes next to cell (x, y), preferring the four straight neighbours. */
   private trailNeighbours(x: number, y: number): number[] {
     const out: number[] = [];
     for (const [nx, ny] of neighbours(x, y)) {
-      const i = pathIndexAt(this.map, nx, ny);
-      if (i >= 0 && this.map.path[i].kind === 'trail' && (nx === x || ny === y)) out.push(i);
+      const i = nodeAt(this.map, nx, ny);
+      if (isPiste(this.map, i) && (nx === x || ny === y)) out.push(i);
     }
     if (!out.length)
       for (const [nx, ny] of neighbours(x, y)) {
-        const i = pathIndexAt(this.map, nx, ny);
-        if (i >= 0 && this.map.path[i].kind === 'trail') out.push(i);
+        const i = nodeAt(this.map, nx, ny);
+        if (isPiste(this.map, i)) out.push(i);
       }
     return out;
   }
@@ -415,8 +507,8 @@ export class Run {
   private nearestTrail(x: number, y: number): number {
     let best = -1;
     let bestD = Infinity;
-    this.map.path.forEach((p, i) => {
-      if (p.kind !== 'trail' || this.enemiesAt(cell(p.x, p.y)).length >= MAX_ENEMIES_PER_TILE) return;
+    this.map.nodes.forEach((p, i) => {
+      if (!isPiste(this.map, i) || this.enemiesAt(cell(p.x, p.y)).length >= MAX_ENEMIES_PER_TILE) return;
       const d = (p.x - x) ** 2 + (p.y - y) ** 2;
       if (d < bestD) {
         bestD = d;
@@ -429,7 +521,7 @@ export class Run {
   private newDay(): void {
     const st = this.state;
     this.events.push({ type: 'day', day: st.day });
-    const chasers = st.enemies.filter((e) => e.s >= 0 && e.kind === 'snowmobile').length;
+    const chasers = st.enemies.filter((e) => e.ride && e.kind === 'snowmobile').length;
     st.tiles.forEach((t, c) => {
       if (!t) return;
       const x = c % MAP_W;
@@ -445,11 +537,11 @@ export class Run {
           if (--t.timer <= 0) {
             t.timer = 3;
             const spots = this.trailNeighbours(x, y).filter((i) => {
-              const p = this.map.path[i];
+              const p = this.map.nodes[i];
               return this.enemiesAt(cell(p.x, p.y)).length < MAX_ENEMIES_PER_TILE;
             });
             if (spots.length) {
-              const p = this.map.path[this.rng.pick(spots)];
+              const p = this.map.nodes[this.rng.pick(spots)];
               this.spawn('guard', p.x, p.y, c);
             }
           }
@@ -477,60 +569,93 @@ export class Run {
       if (t.variant === 'dbd' && --t.timer <= 0) {
         t.timer = 4;
         const i = this.nearestTrail(x, y);
-        if (i >= 0) this.spawn('yeti', this.map.path[i].x, this.map.path[i].y, c);
+        if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, c);
       }
     });
   }
 
   // --- Movement and the lap -----------------------------------------------------------------
 
-  /** Cruise speed on a path tile, in tiles per second. */
+  /** Cruise speed on a node, in tiles per second. */
   baseSpeed(i: number): number {
-    const p = this.map.path[i];
+    const p = this.map.nodes[i];
     if (p.kind === 'lift') return 0.9;
     if (p.kind === 'summit') return 1.3;
     if (p.kind === 'lodge') return 1.2;
-    return p.dir === 'down' ? 2.4 : 1.8;
+    if (p.kind === 'chute') return 3;
+    return dirOf(this.map, i, this.choose(i)) === 'down' ? 2.4 : 1.8;
   }
 
   /** Returns true when the skier just reached the lodge. */
   private move(): boolean {
     const st = this.state;
     const hero = st.hero;
-    const n = this.map.path.length;
-    const i = tileAt(this.map, hero.s);
-    const p = this.map.path[i];
+    const ride = hero.ride;
+    const i = rideNode(ride);
+    const p = this.map.nodes[i];
     const t = st.tiles[cell(p.x, p.y)];
     const onLift = p.kind === 'lift';
     const tileMod = t?.card === 'moguls' ? 0.7 : t?.card === 'ice' ? 1.6 : 1;
     const speed = this.baseSpeed(i) * tileMod * (onLift ? 1 : STANCES[hero.stance].speed * this.stats.speed);
-    const prev = hero.s;
-    hero.s += speed * DT;
-
-    for (let k = Math.round(prev) + 1; k <= Math.round(hero.s) && k < n; k++) this.enterTile(k);
-    if (p.kind === 'trail' && hero.stance === 'tuck') {
+    const before = ride.f;
+    ride.f += speed * DT;
+    if (before < 0.5 && ride.f >= 0.5) this.enterTile(ride.to);
+    while (ride.f >= 1) {
+      ride.f -= 1;
+      ride.at = ride.to;
+      if (ride.at === LODGE) {
+        ride.f = 0;
+        ride.to = this.choose(LODGE);
+        this.completeLap();
+        return true;
+      }
+      const next = this.choose(ride.at);
+      // Riding a lift partway down is a choice to chain another descent instead of going home.
+      if (this.map.nodes[next].kind === 'lift' && this.map.nodes[ride.at].kind !== 'lift') this.chain();
+      ride.to = next;
+      if (ride.f >= 0.5) this.enterTile(ride.to);
+    }
+    if (isPiste(this.map, i) && hero.stance === 'tuck') {
       const m = STANCES.tuck.mult * DT * (hasGadget(st.equipment, 'speedDemon') ? 2 : 1);
       st.lapHand.mult += m;
-      this.line('Tucking', 0, m);
-    }
-    if (hero.s >= n) {
-      hero.s = 0;
-      this.completeLap();
-      return true;
+      this.line('Tucking', 0, m, false);
     }
     return false;
   }
 
+  private chain(): void {
+    const st = this.state;
+    st.descent++;
+    st.lapDescents++;
+    st.record.descents++;
+    st.lapHand.mult += ROUTE_TUNING.chainMult;
+    this.line('Chained descents', 0, ROUTE_TUNING.chainMult);
+    const me = this.heroPos();
+    this.events.push({ type: 'chain', descents: st.lapDescents, x: me.x, y: me.y });
+  }
+
   private enterTile(i: number): void {
     const st = this.state;
-    const p = this.map.path[i];
+    const p = this.map.nodes[i];
     const t = st.tiles[cell(p.x, p.y)];
     const cx = p.x + 0.5;
     const cy = p.y + 0.5;
+    st.lapPar += 1 / this.baseSpeed(i);
     st.hero.airborne = t?.card === 'kicker';
-    if (p.kind === 'trail') {
+    if (isPiste(this.map, i)) {
+      // Base chips for the run itself, like a Balatro hand's base: one a tile, two in a chute.
+      const steep = p.kind === 'chute';
+      st.lapHand.chips += steep ? 2 : 1;
+      this.line('The run', steep ? 2 : 1, 0, false);
+      if (steep) {
+        st.lapHand.mult += ROUTE_TUNING.steepMult;
+        this.line('Steep', 0, ROUTE_TUNING.steepMult, false);
+      }
       if (t?.card === 'moguls') this.addChips('Moguls', 12, st.hero.stance === 'tuck' ? 0.3 : 0, cx, cy);
-      if (t?.card === 'kicker') this.addChips('Big air', 25, 0.5, cx, cy);
+      if (t?.card === 'kicker') {
+        if (steep) this.addChips('Cliff drop', 50, 1, cx, cy);
+        else this.addChips('Big air', 25, 0.5, cx, cy);
+      }
       const pines = countAround(st.tiles, p.x, p.y, 'pines');
       if (pines) {
         const bonus = hasGadget(st.equipment, 'treeHugger') ? 0.05 * pines : 0;
@@ -558,13 +683,8 @@ export class Run {
 
   private completeLap(): void {
     const st = this.state;
-    // Base chips for the run itself, like a Balatro hand's base: one per trail tile.
-    const descent = this.map.path.filter((p) => p.kind === 'trail').length;
-    st.lapHand.chips += descent;
-    this.line('The run', descent, 0);
-    let par = 0;
-    for (let i = 0; i < this.map.path.length; i++) par += 1 / this.baseSpeed(i);
-    const bonus = Math.min(2, Math.max(0, (par / Math.max(st.lapTime, 1) - 1) * 2));
+    st.record.descents++;
+    const bonus = Math.min(2, Math.max(0, (st.lapPar / Math.max(st.lapTime, 1) - 1) * 2));
     if (bonus > 0.01) {
       st.lapHand.mult += bonus;
       this.line('Fast lap', 0, bonus);
@@ -573,7 +693,16 @@ export class Run {
     const points = Math.round(hand.chips * hand.mult);
     st.cash += points;
     st.record.bestLap = Math.max(st.record.bestLap, points);
-    this.events.push({ type: 'lap', lap: st.lap, chips: hand.chips, mult: hand.mult, points, lines: hand.lines, lapTime: st.lapTime });
+    this.events.push({
+      type: 'lap',
+      lap: st.lap,
+      chips: hand.chips,
+      mult: hand.mult,
+      points,
+      lines: hand.lines,
+      lapTime: st.lapTime,
+      descents: st.lapDescents,
+    });
     st.lapHand = freshHand(st.permanentMult);
     this.drawCard();
     st.hero.airborne = false;
@@ -596,13 +725,14 @@ export class Run {
 
   // --- Scoring ------------------------------------------------------------------------------
 
-  private line(label: string, chips: number, mult: number): void {
+  /** Adds to a line of the tally. Continuous lines (tucking, the run) don't count passes. */
+  private line(label: string, chips: number, mult: number, counts = true): void {
     const lines = this.state.lapHand.lines;
     let l = lines.find((x) => x.label === label);
     if (!l) lines.push((l = { label, chips: 0, mult: 0, count: 0 }));
     l.chips += chips;
     l.mult += mult;
-    if (chips || label !== 'Tucking') l.count++;
+    if (counts) l.count++;
   }
 
   private addChips(label: string, chips: number, mult: number, x: number, y: number): void {
@@ -617,7 +747,7 @@ export class Run {
 
   private heal(): void {
     const st = this.state;
-    const p = this.map.path[tileAt(this.map, st.hero.s)];
+    const p = this.map.nodes[this.heroNode()];
     let rate = this.stats.regen;
     if (p.kind === 'lift') rate += 2 * (hasGadget(st.equipment, 'liftPass') ? 3 : 1);
     st.hero.hp = Math.min(this.stats.maxHp, st.hero.hp + rate * DT);
@@ -630,15 +760,22 @@ export class Run {
     const stance = STANCES[hero.stance];
     const rng = this.rng;
     const me = this.heroPos();
-    const tile = this.map.path[tileAt(this.map, hero.s)];
+    const tile = this.map.nodes[this.heroNode()];
     const onLift = tile.kind === 'lift';
     const onIce = st.tiles[cell(tile.x, tile.y)]?.card === 'ice';
+    const terrainAim = (onIce ? 0.6 : 1) * (tile.kind === 'chute' ? ROUTE_TUNING.chuteAim : 1);
 
-    // Chasers ride the loop too.
+    // Chasers ride the mountain too, and follow the same switches.
     for (const e of st.enemies) {
-      if (e.s < 0) continue;
-      e.s = (e.s + ENEMIES[e.kind].speed * DT) % this.map.path.length;
-      const p = pathPos(this.map, e.s);
+      if (!e.ride) continue;
+      const r = e.ride;
+      r.f += ENEMIES[e.kind].speed * DT;
+      while (r.f >= 1) {
+        r.f -= 1;
+        r.at = r.to;
+        r.to = this.choose(r.at);
+      }
+      const p = ridePos(this.map, r);
       e.x = p.x;
       e.y = p.y;
     }
@@ -660,7 +797,7 @@ export class Run {
         const plowReload = hero.stance === 'plow' && hasGadget(st.equipment, 'plowReload');
         hero.cooldown = 1 / (stats.fireRate * (plowReload ? 1.6 : 1));
         const steady = onLift ? (hasGadget(st.equipment, 'liftPass') ? 1.5 : 1.2) : 1;
-        const chance = stats.accuracy * stance.accuracy * (onIce ? 0.6 : 1) * steady - ENEMIES[target.kind].evasion;
+        const chance = stats.accuracy * stance.accuracy * terrainAim * steady - ENEMIES[target.kind].evasion;
         const hit = rng.next() < Math.min(0.97, Math.max(0.05, chance));
         const crit = hit && (rng.next() < stats.crit || (hero.airborne && airhead));
         const damage = hit ? Math.round(stats.damage * (crit ? (hero.airborne && airhead ? 3 : 2) : 1)) : 0;
@@ -727,7 +864,7 @@ export class Run {
     if (this.rng.chance(def.itemChance)) {
       const item =
         e.kind === 'baron'
-          ? rollGadget(this.rng, st.nextId++, st.lap, 2)
+          ? rollGadget(this.rng, st.nextId++, st.descent, 2)
           : rollItem(this.rng, st.nextId++, e.level, st.bonuses.rarityBoost, st.bonuses.gadgetDrops);
       st.inventory.push(item);
       st.record.items++;

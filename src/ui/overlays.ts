@@ -14,6 +14,8 @@ export interface TallyInfo {
   points: number;
   lines: HandLine[];
   lapTime: number;
+  descents: number;
+  nextLevel: number;
   enemies: number;
   bossSoon: boolean;
 }
@@ -37,7 +39,8 @@ export class Overlays {
 
   /** Lines tick in one by one, then chips × mult counts up. `tick` plays a blip per line. */
   showTally(t: TallyInfo, tick: (i: number) => void, done: () => void): void {
-    $('tally-title').textContent = `Lap ${t.lap} · ${t.lapTime.toFixed(0)}s · at the lodge`;
+    const descents = t.descents > 1 ? ` · ${t.descents} descents` : '';
+    $('tally-title').textContent = `Lap ${t.lap}${descents} · ${t.lapTime.toFixed(0)}s · at the lodge`;
     const lines = [...t.lines].sort((a, b) => b.chips - a.chips || b.mult - a.mult);
     $('tally-lines').replaceChildren(
       ...(lines.length ? lines : [{ label: 'A quiet lap', chips: 0, mult: 0, count: 0 }]).map((l, i) => {
@@ -52,7 +55,7 @@ export class Overlays {
     $('tally-chips').textContent = String(t.chips);
     $('tally-mult').textContent = t.mult.toFixed(1);
     $('tally-points').textContent = '$0';
-    const note = [`Lap ${t.lap + 1}: new enemies arrive at level ${t.lap + 1}.`, `${t.enemies} on the mountain now.`];
+    const note = [`Next descent: new enemies arrive at level ${t.nextLevel}.`, `${t.enemies} on the mountain now.`];
     if (t.bossSoon) note.push('The Baron is close.');
     $('tally-note').textContent = note.join(' ');
     $('tally').classList.remove('hidden');

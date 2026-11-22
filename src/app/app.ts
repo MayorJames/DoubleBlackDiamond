@@ -4,9 +4,9 @@
 import { Sfx } from '../audio/sfx';
 import { CARDS } from '../game/cards';
 import { RATINGS } from '../game/enemies';
-import { bankRun, bonusesFor, build, deckFor, type BuildingId } from '../game/lodge';
-import { pathPos } from '../game/map';
+import { bankRun, bonusesFor, build, deckFor, toggleCard, type BuildingId } from '../game/lodge';
 import { Run, type Command, type RunEvent } from '../game/run';
+import type { CardId } from '../game/cards';
 import type { Stance } from '../game/stats';
 import { MapRenderer, type Selection } from '../render/mapRenderer';
 import { LodgeUi } from '../ui/lodgeUi';
@@ -48,8 +48,9 @@ export class App {
   private resumeSpeed = 1;
   private autoPaused = false;
   private speed = 1;
-  private prevHeroS = 0;
-  private readonly prevChasers = new Map<number, number>();
+  /** Positions before the last tick, to interpolate between ticks. */
+  private prevHero = { x: 0, y: 0 };
+  private readonly prevChasers = new Map<number, { x: number; y: number }>();
   private elapsed = 0;
   private banked = false;
   private unlockedRating: string | null = null;
@@ -70,6 +71,7 @@ export class App {
     );
     this.lodgeUi = new LodgeUi({
       build: (id) => this.build(id),
+      toggleCard: (id) => this.toggleCard(id),
       start: (rating, seed) => this.startRun(rating, seed),
       newSeed: randomSeed,
     });
@@ -97,7 +99,7 @@ export class App {
     this.unlockedRating = null;
     this.selection = null;
     this.runUi.reset();
-    this.prevHeroS = 0;
+    this.prevHero = this.run.heroPos();
     this.prevChasers.clear();
     document.getElementById('lodge-screen')!.classList.add('hidden');
     document.getElementById('run-screen')!.classList.remove('hidden');
@@ -127,6 +129,15 @@ export class App {
       saveProfile(this.profile);
       this.sfx.unlock();
       this.sfx.chaChing();
+      this.lodgeUi.render(this.profile);
+    }
+  }
+
+  private toggleCard(id: CardId): void {
+    if (toggleCard(this.profile, id)) {
+      saveProfile(this.profile);
+      this.sfx.unlock();
+      this.sfx.place();
       this.lodgeUi.render(this.profile);
     }
   }
@@ -172,6 +183,12 @@ export class App {
     this.runUi.pop(`Burned ${name}: +1 intel`, me.x, me.y - 0.6, 'loot');
   }
 
+  /** Flips the next junction ahead of the skier. */
+  private flipNext(): void {
+    const k = this.run?.nextJunction() ?? -1;
+    if (k >= 0) this.command({ type: 'switch', route: k });
+  }
+
   private rideAgain(): void {
     if (this.run?.state.status !== 'lodge') return;
     this.overlays.hideTally();
@@ -183,9 +200,9 @@ export class App {
   private tick(): void {
     const run = this.run;
     if (!run || run.state.status !== 'riding') return;
-    this.prevHeroS = run.state.hero.s;
+    this.prevHero = run.heroPos();
     this.prevChasers.clear();
-    for (const e of run.state.enemies) if (e.s >= 0) this.prevChasers.set(e.id, e.s);
+    for (const e of run.state.enemies) if (e.ride) this.prevChasers.set(e.id, { x: e.x, y: e.y });
     run.step();
     this.handle(run.drainEvents());
   }
@@ -194,18 +211,17 @@ export class App {
     this.elapsed += dt;
     const run = this.run;
     if (!run) return;
-    const n = run.map.path.length;
-    const cur = run.state.hero.s;
-    const heroS = run.state.status === 'riding' ? lerpLoop(this.prevHeroS, cur, alpha, n) : cur;
+    const cur = run.heroPos();
+    const hero = run.state.status === 'riding' ? lerp(this.prevHero, cur, alpha) : cur;
     const chasers = new Map<number, { x: number; y: number }>();
     for (const e of run.state.enemies) {
-      if (e.s < 0) continue;
+      if (!e.ride) continue;
       const prev = this.prevChasers.get(e.id);
-      chasers.set(e.id, pathPos(run.map, prev === undefined ? e.s : lerpLoop(prev, e.s, alpha, n)));
+      chasers.set(e.id, prev ? lerp(prev, e, alpha) : { x: e.x, y: e.y });
     }
     if (this.selection) this.selection.card = run.state.hand[this.runUi.selected ?? -1] ?? this.selection.card;
     this.renderer.render(run, {
-      heroS,
+      hero,
       chasers,
       time: this.elapsed,
       dt: this.speed > 0 ? dt : dt * 0.25,
@@ -263,6 +279,30 @@ export class App {
           if (e.kind === 'yeti' || e.kind === 'baron') this.sfx.bonk();
           break;
         }
+        case 'route': {
+          const r = run.state.routes[e.route];
+          fx.burst(e.x * T + 8, e.y * T + 8, 16);
+          this.runUi.banner(
+            r.kind === 'lift'
+              ? 'Chairlift open! Ride it to chain another descent (+1 mult). Click the junction to ski past.'
+              : 'Chute open! A steep shortcut straight down. Click the junction to ski past.',
+          );
+          this.sfx.chaChing();
+          break;
+        }
+        case 'switch': {
+          const r = run.state.routes[e.route];
+          this.runUi.pop(e.take ? (r.kind === 'lift' ? 'Lift: ride' : 'Chute: drop in') : 'Ski on', r.x + 0.5, r.y - 0.2, e.take ? 'red' : '');
+          fx.ring(r.x * T + 8, r.y * T + 8);
+          this.sfx.chipTick(e.take ? 6 : 2);
+          break;
+        }
+        case 'chain':
+          this.runUi.burst(`CHAIN ×${e.descents}!`, e.x, e.y - 0.6);
+          this.runUi.pop('+1.0× chained descent', e.x, e.y - 1.2, 'red big');
+          this.runUi.pulseHand();
+          this.sfx.chaChing();
+          break;
         case 'chips':
           this.runUi.pop(`+${e.chips} ${e.label}${e.mult >= 0.05 ? ` +${e.mult.toFixed(1)}×` : ''}`, e.x, e.y - 0.9, e.mult >= 0.05 ? 'red' : '');
           this.runUi.pulseHand();
@@ -304,6 +344,8 @@ export class App {
               points: e.points,
               lines: e.lines,
               lapTime: e.lapTime,
+              descents: e.descents,
+              nextLevel: run.state.descent + 1,
               enemies: run.state.enemies.length,
               bossSoon: !run.state.boss.spawned && run.state.boss.meter >= run.state.boss.max * 0.75,
             },
@@ -341,6 +383,8 @@ export class App {
     else this.sfx.chaChing();
     const record: [string, string][] = [
       ['Laps', String(st.status === 'retreated' || st.status === 'won' ? st.lap : st.lap - 1)],
+      ['Descents', String(st.record.descents)],
+      ['Routes built', String(st.routes.length)],
       ['Guards down', String(st.record.kills)],
       ['Best lap', formatCash(st.record.bestLap)],
       ['Cards placed', String(st.record.placed)],
@@ -393,6 +437,9 @@ export class App {
         case 'Escape':
           this.select(null);
           break;
+        case 'KeyR':
+          this.flipNext();
+          break;
         case 'KeyM':
           this.sfx.toggleMute();
           break;
@@ -407,6 +454,7 @@ export class App {
       if (!this.run) return;
       const p = local(e);
       const tile = this.renderer.tileAtCss(p.x, p.y);
+      this.canvas.classList.toggle('switchable', !this.selection && !!tile && this.run.junctionAt(tile.x, tile.y) >= 0);
       if (this.selection) {
         this.selection.hover = tile;
         this.runUi.hideTip();
@@ -416,11 +464,18 @@ export class App {
       if (this.selection) this.selection.hover = null;
       this.runUi.hideTip();
     });
+    document.getElementById('flip')!.addEventListener('click', () => this.flipNext());
     this.canvas.addEventListener('click', (e) => {
       const run = this.run;
-      if (!run || !this.selection) return;
+      if (!run) return;
       const p = local(e);
       const tile = this.renderer.tileAtCss(p.x, p.y);
+      if (!this.selection) {
+        // Without a card in hand, clicking a junction flips its switch.
+        const k = tile ? run.junctionAt(tile.x, tile.y) : -1;
+        if (k >= 0) this.command({ type: 'switch', route: k });
+        return;
+      }
       const index = this.runUi.selected;
       if (!tile || index === null || !run.canPlace(this.selection.card, tile.x, tile.y)) return;
       this.command({ type: 'place', hand: index, x: tile.x, y: tile.y });
@@ -433,8 +488,4 @@ export class App {
   }
 }
 
-/** Interpolates along the loop, unwrapping when the skier crosses the lodge. */
-function lerpLoop(a: number, b: number, t: number, n: number): number {
-  if (b < a - n / 2) b += n;
-  return a + (b - a) * t;
-}
+const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });

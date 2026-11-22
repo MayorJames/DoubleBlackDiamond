@@ -1,8 +1,9 @@
 // Cards build the mountain. Like Loop Hero's road, roadside and landscape tiles, each card
-// goes on a particular kind of cell, and neighbours combine.
+// goes on a particular kind of cell, and neighbours combine. Route cards change the shape of
+// the mountain itself: lifts and chutes that branch off the trail.
 
 import { MAP_H, MAP_W } from './constants';
-import { cell, isPath, isRoadside, neighbours, pathIndexAt, type LoopMap } from './map';
+import { cell, isPath, isPiste, isRoadside, neighbours, nodeAt, routeCourse, type MountainMap, type RouteKind } from './map';
 
 export type CardId =
   | 'patrol'
@@ -18,10 +19,15 @@ export type CardId =
   | 'boulder'
   | 'peak'
   | 'powder'
-  | 'avalanche';
+  | 'avalanche'
+  | 'chairlift'
+  | 'chute';
 
-/** Where a card can go: on the trail, beside the path, any open snow, or on a placed tile. */
-export type CardKind = 'trail' | 'roadside' | 'landscape' | 'special';
+/**
+ * Where a card can go: on the trail, beside the path, any open snow, on a placed tile, or (for
+ * routes) on a trail tile with a clear line straight up or down to more trail.
+ */
+export type CardKind = 'trail' | 'roadside' | 'landscape' | 'special' | 'route';
 
 export interface CardDef {
   id: CardId;
@@ -60,7 +66,28 @@ export const CARDS: Record<CardId, CardDef> = {
   peak: def('peak', 'Peak', 'landscape', 2, 1, '+8 max HP. Fill a 3x3 with peaks and boulders for a Double Black Diamond.', 'Experts only.'),
   powder: def('powder', 'Powder Field', 'landscape', 2, 1, 'Heals 3 HP a day, +1 for each pine grove beside it.', 'Face shots for days.'),
   avalanche: def('avalanche', 'Avalanche', 'special', 1, 0, 'Wipes out a placed tile and everything on and around it.', 'Not the snow you ordered.'),
+  chairlift: def(
+    'chairlift',
+    'Chairlift',
+    'route',
+    2,
+    2,
+    'Builds a lift from this trail tile up to the trail above. Ride it to chain another descent before the lodge: +1 mult each time.',
+    'Lower the safety bar. Raise the stakes.',
+  ),
+  chute: def(
+    'chute',
+    'Chute',
+    'route',
+    2,
+    1,
+    'Cuts a steep chute from this trail tile down to the trail below. Very fast, +0.2 mult a tile, and it skips everything in between.',
+    'Scraped clean by the brave and the stupid.',
+  ),
 };
+
+/** The kind of route a route card builds. */
+export const ROUTE_OF: Partial<Record<CardId, RouteKind>> = { chairlift: 'lift', chute: 'chute' };
 
 export const CARD_IDS = Object.keys(CARDS) as CardId[];
 
@@ -81,16 +108,15 @@ export type Tiles = (TileState | null)[];
 export const newTiles = (): Tiles => new Array(MAP_W * MAP_H).fill(null);
 
 /** Whether `card` can go on cell (x, y) right now. */
-export function canPlace(map: LoopMap, tiles: Tiles, card: CardId, x: number, y: number): boolean {
+export function canPlace(map: MountainMap, tiles: Tiles, card: CardId, x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return false;
-  const placed = tiles[cell(x, y)];
   const kind = CARDS[card].kind;
+  // A route can share its junction with a trail card, but can't cross anything you've placed.
+  if (kind === 'route') return !!routeCourse(map, ROUTE_OF[card]!, x, y, (c) => !!tiles[c]);
+  const placed = tiles[cell(x, y)];
   if (kind === 'special') return !!placed;
   if (placed) return false;
-  if (kind === 'trail') {
-    const i = pathIndexAt(map, x, y);
-    return i >= 0 && map.path[i].kind === 'trail';
-  }
+  if (kind === 'trail') return isPiste(map, nodeAt(map, x, y));
   if (kind === 'roadside') return isRoadside(map, x, y);
   return !isPath(map, x, y);
 }

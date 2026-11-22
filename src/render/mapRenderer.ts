@@ -1,11 +1,12 @@
 // Draws the mountain as an old piste map in pixel art: contour lines on white snow, the groomed
-// trail, the chairlift, every card you have placed, and the skier and enemies on top. Everything
-// is drawn at art resolution (16px tiles) and scaled up by a whole number so pixels stay crisp.
+// trail, chutes, every chairlift, every card you have placed, the rope that closes off whichever
+// way a junction isn't sending you, and the skier and enemies on top. Everything is drawn at art
+// resolution (16px tiles) and scaled up by a whole number so pixels stay crisp.
 
 import type { CardId, TileState } from '../game/cards';
 import { MAP_H, MAP_W, TILE } from '../game/constants';
 import type { Enemy } from '../game/enemies';
-import { pathPos, tileAt, type Dir, type LoopMap } from '../game/map';
+import { dirOf, rideNode, type Dir, type MountainMap, type Segment } from '../game/map';
 import type { Run } from '../game/run';
 import { hashSeed } from '../game/rng';
 import { Fx, line } from './fx';
@@ -32,7 +33,7 @@ import { Atlas, type SpriteName } from './sprites';
 export const ART_W = MAP_W * TILE;
 export const ART_H = MAP_H * TILE;
 
-const TILE_SPRITES: Record<Exclude<CardId, 'avalanche'>, SpriteName> = {
+const TILE_SPRITES: Record<Exclude<CardId, 'avalanche' | 'chairlift' | 'chute'>, SpriteName> = {
   patrol: 'patrol',
   moguls: 'moguls',
   kicker: 'kicker',
@@ -48,7 +49,8 @@ const TILE_SPRITES: Record<Exclude<CardId, 'avalanche'>, SpriteName> = {
   powder: 'powder',
 };
 
-export const spriteForCard = (card: CardId): SpriteName => (card === 'avalanche' ? 'peak' : TILE_SPRITES[card]);
+export const spriteForCard = (card: CardId): SpriteName =>
+  card === 'avalanche' ? 'peak' : card === 'chairlift' ? 'chairlift' : card === 'chute' ? 'chute' : TILE_SPRITES[card];
 
 const ROTATION: Record<Dir, number> = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 };
 
@@ -67,8 +69,8 @@ export interface Selection {
 }
 
 export interface FrameView {
-  /** Skier's position along the loop, interpolated between ticks. */
-  heroS: number;
+  /** Skier's position in tiles, interpolated between ticks. */
+  hero: { x: number; y: number };
   /** Interpolated chaser positions by enemy id. */
   chasers: Map<number, { x: number; y: number }>;
   time: number;
@@ -87,7 +89,7 @@ export class MapRenderer {
   private pathLayer: HTMLCanvasElement | null = null;
   private tileLayer: HTMLCanvasElement | null = null;
   private tilesKey = '';
-  private map: LoopMap | null = null;
+  private map: MountainMap | null = null;
   /** Device pixels per art pixel, and where the map sits on the canvas. */
   scale = 1;
   ox = 0;
@@ -112,12 +114,18 @@ export class MapRenderer {
     this.oy = Math.round((h - ART_H * this.scale) / 2);
   }
 
+  /** A new expedition: fresh layers and no leftover effects. */
   setRun(run: Run): void {
-    this.map = run.map;
-    this.background = buildBackground(run.map);
-    this.pathLayer = this.buildPath(run.map);
-    this.tilesKey = '';
+    this.setMap(run.map);
     this.fx.clear();
+  }
+
+  /** The mountain changed shape (a route went down): redraw the static layers. */
+  private setMap(map: MountainMap): void {
+    if (this.map?.seed !== map.seed || !this.background) this.background = buildBackground(map);
+    this.map = map;
+    this.pathLayer = this.buildPath(map);
+    this.tilesKey = '';
   }
 
   /** Map tile under a point in CSS pixels, or null. */
@@ -139,7 +147,7 @@ export class MapRenderer {
   render(run: Run, view: FrameView): void {
     const b = this.bctx;
     const map = run.map;
-    if (!this.background || this.map !== map) this.setRun(run);
+    if (!this.background || this.map !== map) this.setMap(map);
     this.fx.update(view.dt);
 
     b.drawImage(this.background!, 0, 0);
@@ -150,16 +158,17 @@ export class MapRenderer {
       this.tilesKey = key;
     }
     b.drawImage(this.tileLayer!, 0, 0);
+    this.drawJunctions(run);
     if (view.selection) this.drawSelection(run, view.selection);
-    this.drawChairs(map, view);
+    this.drawChairs(run, view);
 
     // Entities, back to front.
     const actors: { y: number; draw: () => void }[] = [];
     for (const e of run.state.enemies) {
-      const pos = e.s >= 0 ? (view.chasers.get(e.id) ?? e) : e;
+      const pos = e.ride ? (view.chasers.get(e.id) ?? e) : e;
       actors.push({ y: pos.y, draw: () => this.drawEnemy(run, e, pos.x, pos.y, view.time) });
     }
-    const hp = pathPos(map, view.heroS);
+    const hp = view.hero;
     actors.push({ y: hp.y + 0.01, draw: () => this.drawHero(run, view, hp.x, hp.y) });
     actors.sort((a, c) => a.y - c.y);
     for (const a of actors) a.draw();
@@ -190,41 +199,50 @@ export class MapRenderer {
 
   // --- Static layers ------------------------------------------------------------------------
 
-  private buildPath(map: LoopMap): HTMLCanvasElement {
+  private buildPath(map: MountainMap): HTMLCanvasElement {
     const [c, ctx] = canvas(ART_W, ART_H);
+    // A mask of groomed snow: 1 runs down the screen, 2 runs across, 3 is a chute.
     const mask = new Uint8Array(ART_W * ART_H);
     const fill = (x0: number, y0: number, w: number, h: number, v: number) => {
       for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) mask[y * ART_W + x] = v;
     };
-    const opposite: Record<Dir, Dir> = { up: 'down', down: 'up', left: 'right', right: 'left' };
-    const n = map.path.length;
-    map.path.forEach((p, i) => {
-      if (p.kind === 'lift') return;
-      const x0 = p.x * TILE;
-      const y0 = p.y * TILE;
-      const v = p.dir === 'down' || p.dir === 'up' ? 1 : 2;
-      fill(x0 + 3, y0 + 3, 10, 10, v);
-      const sides: [Dir, number][] = [
-        [p.dir, (i + 1) % n],
-        [opposite[p.from], (i - 1 + n) % n],
-      ];
-      for (const [side, j] of sides) {
-        if (map.path[j].kind === 'lift') continue;
-        if (side === 'right') fill(x0 + 8, y0 + 3, 8, 10, v);
-        if (side === 'left') fill(x0, y0 + 3, 8, 10, v);
-        if (side === 'down') fill(x0 + 3, y0 + 8, 10, 8, v);
-        if (side === 'up') fill(x0 + 3, y0, 10, 8, v);
+    const groomed = (i: number) => map.nodes[i].kind !== 'lift';
+    const style = (a: number, b: number) => {
+      if (map.nodes[a].kind === 'chute' || map.nodes[b].kind === 'chute') return 3;
+      const d = dirOf(map, a, b);
+      return d === 'down' || d === 'up' ? 1 : 2;
+    };
+    map.nodes.forEach((p, i) => {
+      if (groomed(i)) fill(p.x * TILE + 3, p.y * TILE + 3, 10, 10, style(i, p.next[0]));
+    });
+    // Join each tile to the ones it leads to, half a tile from each side.
+    const half = (i: number, side: Dir, v: number) => {
+      const x0 = map.nodes[i].x * TILE;
+      const y0 = map.nodes[i].y * TILE;
+      if (side === 'right') fill(x0 + 8, y0 + 3, 8, 10, v);
+      if (side === 'left') fill(x0, y0 + 3, 8, 10, v);
+      if (side === 'down') fill(x0 + 3, y0 + 8, 10, 8, v);
+      if (side === 'up') fill(x0 + 3, y0, 10, 8, v);
+    };
+    map.nodes.forEach((p, i) => {
+      if (!groomed(i)) return;
+      for (const j of p.next) {
+        if (!groomed(j)) continue;
+        const v = style(i, j);
+        half(i, dirOf(map, i, j), v);
+        half(j, dirOf(map, j, i), v);
       }
     });
 
-    // The lift line: a cleared strip with two cables and towers.
-    const lodge = map.path[0];
-    const top = map.path[map.summit];
-    const lx = lodge.x * TILE;
+    // Lift lines: a cleared strip under every lift.
     ctx.fillStyle = LIFT_CLEAR;
-    ctx.fillRect(lx + 2, top.y * TILE + 8, 12, (lodge.y - top.y) * TILE);
+    for (const lift of map.lifts) {
+      const { x, top, bottom } = liftSpan(map, lift);
+      ctx.fillRect(x + 2, top, 12, bottom - top);
+    }
 
-    // Trail pixels: edges, a soft shadow, and groomer corduroy along the direction of travel.
+    // Trail pixels: edges, a soft shadow, groomer corduroy along the direction of travel, and
+    // steep hatching down chutes.
     const img = ctx.getImageData(0, 0, ART_W, ART_H);
     const put = (i: number, hex: string) => {
       img.data[i * 4] = parseInt(hex.slice(1, 3), 16);
@@ -242,30 +260,55 @@ export class MapRenderer {
           continue;
         }
         const edge = x === 0 || y === 0 || x === ART_W - 1 || y === ART_H - 1 || !mask[i - 1] || !mask[i + 1] || !mask[i - ART_W] || !mask[i + ART_W];
-        if (edge) put(i, TRAIL_EDGE);
+        if (edge) put(i, v === 3 ? INK : TRAIL_EDGE);
+        else if (v === 3) put(i, (x + y) % 4 === 0 ? MID : (x + y) % 4 === 2 ? LIGHT : TRAIL);
         else put(i, (v === 1 ? x % 3 === 0 : y % 3 === 0) ? TRAIL_LINE : TRAIL);
       }
     }
     ctx.putImageData(img, 0, 0);
 
-    ctx.fillStyle = INK;
-    const cableTop = top.y * TILE + 8;
-    const cableBottom = lodge.y * TILE + 4;
-    ctx.fillRect(lx + 5, cableTop, 1, cableBottom - cableTop);
-    ctx.fillRect(lx + 10, cableTop, 1, cableBottom - cableTop);
-    for (let y = top.y + 1; y < lodge.y; y += 2) {
-      ctx.fillStyle = DARK;
-      ctx.fillRect(lx + 7, y * TILE + 5, 2, 9);
-      ctx.fillStyle = INK;
-      ctx.fillRect(lx + 3, y * TILE + 5, 10, 1);
-      ctx.fillRect(lx + 6, y * TILE + 14, 4, 1);
+    // A black diamond at the lip of every chute.
+    for (const chute of map.chutes) {
+      const first = map.nodes[chute.nodes[0]];
+      diamond(ctx, first.x * TILE + 8, first.y * TILE + 3);
     }
-    // Top station and the summit flag.
+
+    // Cables, towers and stations.
+    for (const lift of map.lifts) {
+      const { x: lx, top, bottom } = liftSpan(map, lift);
+      const cableTop = top;
+      const cableBottom = lift.route < 0 ? bottom - 4 : bottom;
+      ctx.fillStyle = INK;
+      ctx.fillRect(lx + 5, cableTop, 1, cableBottom - cableTop);
+      ctx.fillRect(lx + 10, cableTop, 1, cableBottom - cableTop);
+      lift.nodes.forEach((n, k) => {
+        if (k % 2 !== (lift.route < 0 ? 0 : 1) && lift.nodes.length > 1) return;
+        const y = map.nodes[n].y;
+        ctx.fillStyle = DARK;
+        ctx.fillRect(lx + 7, y * TILE + 5, 2, 9);
+        ctx.fillStyle = INK;
+        ctx.fillRect(lx + 3, y * TILE + 5, 10, 1);
+        ctx.fillRect(lx + 6, y * TILE + 14, 4, 1);
+      });
+      if (lift.route >= 0) {
+        // Bull wheels at both ends of a lift you built.
+        for (const y of [top - 2, bottom]) {
+          ctx.fillStyle = INK;
+          ctx.fillRect(lx + 3, y, 10, 2);
+          ctx.fillStyle = RED;
+          ctx.fillRect(lx + 7, y, 2, 2);
+        }
+      }
+    }
+    // The main lift's top station, the summit flag and the lodge.
+    const lodge = map.nodes[0];
+    const summit = map.nodes[map.summit];
+    const lx = lodge.x * TILE;
     ctx.fillStyle = INK;
-    ctx.fillRect(lx + 2, top.y * TILE + 4, 12, 5);
+    ctx.fillRect(lx + 2, summit.y * TILE + 4, 12, 5);
     ctx.fillStyle = PAPER;
-    ctx.fillRect(lx + 3, top.y * TILE + 5, 10, 2);
-    ctx.drawImage(this.atlas.get('flag'), lx + 10, top.y * TILE - 4);
+    ctx.fillRect(lx + 3, summit.y * TILE + 5, 10, 2);
+    ctx.drawImage(this.atlas.get('flag'), lx + 10, summit.y * TILE - 4);
     ctx.drawImage(this.atlas.get('lodge'), lx, lodge.y * TILE + 1);
     return c;
   }
@@ -288,10 +331,11 @@ export class MapRenderer {
 
   private drawTile(ctx: CanvasRenderingContext2D, run: Run, t: TileState, x: number, y: number, i: number): void {
     const sprite = this.atlas.get(spriteForCard(t.card));
-    const p = run.map.path[run.map.index[i]];
-    if (p && (t.card === 'kicker' || t.card === 'patrol' || t.card === 'ice')) {
+    const node = run.map.index[i];
+    if (node >= 0 && (t.card === 'kicker' || t.card === 'patrol' || t.card === 'ice')) {
       // Trail features face the direction of travel.
-      const turn = t.card === 'patrol' ? (p.dir === 'left' || p.dir === 'right' ? Math.PI / 2 : 0) : ROTATION[p.dir] + Math.PI;
+      const dir = dirOf(run.map, node, run.map.nodes[node].next[0]);
+      const turn = t.card === 'patrol' ? (dir === 'left' || dir === 'right' ? Math.PI / 2 : 0) : ROTATION[dir] + Math.PI;
       ctx.save();
       ctx.translate(x + 8, y + 8);
       ctx.rotate(turn);
@@ -333,20 +377,48 @@ export class MapRenderer {
     b.fillRect(h.x * TILE + 15, h.y * TILE, 1, TILE);
   }
 
-  private drawChairs(map: LoopMap, view: FrameView): void {
+  /**
+   * At every junction, a rope (red flags on a line) closes off the way it isn't sending you, so
+   * the open way reads at a glance. Drawn each frame because switches flip at any time.
+   */
+  private drawJunctions(run: Run): void {
     const b = this.bctx;
+    const map = run.map;
+    run.state.routes.forEach((r, k) => {
+      const j = map.index[r.y * MAP_W + r.x];
+      if (j < 0 || map.nodes[j].junction !== k) return;
+      const closed = map.nodes[j].next[r.take ? 0 : 1];
+      const side = dirOf(map, j, closed);
+      const x0 = r.x * TILE;
+      const y0 = r.y * TILE;
+      const across = side === 'up' || side === 'down';
+      // Two pixels thick, just inside the tile edge, with ink posts at both ends.
+      const at = side === 'right' ? x0 + 13 : side === 'left' ? x0 + 1 : side === 'down' ? y0 + 13 : y0 + 1;
+      for (let k2 = 1; k2 <= 14; k2++) {
+        b.fillStyle = k2 <= 2 || k2 >= 13 ? INK : k2 % 4 < 2 ? RED : PAPER;
+        if (across) b.fillRect(x0 + k2, at, 1, 2);
+        else b.fillRect(at, y0 + k2, 2, 1);
+      }
+    });
+  }
+
+  private drawChairs(run: Run, view: FrameView): void {
+    const b = this.bctx;
+    const map = run.map;
     const chair = this.atlas.get('chair');
-    const lx = map.path[0].x * TILE;
-    const top = map.path[map.summit].y * TILE + 8;
-    const bottom = map.path[0].y * TILE + 2;
-    const off = (view.time * 14.4) % 16;
-    const heroOnLift = map.path[tileAt(map, view.heroS)].kind === 'lift';
-    const heroY = pathPos(map, view.heroS).y * TILE;
-    for (let y = bottom - off; y > top + 2; y -= 16) {
-      if (heroOnLift && Math.abs(y - heroY) < 12) continue;
-      b.drawImage(chair, lx + 2, Math.round(y) - 2);
+    const heroNode = map.nodes[rideNode(run.state.hero.ride)];
+    const heroY = view.hero.y * TILE;
+    for (const lift of map.lifts) {
+      const { x: lx, top, bottom } = liftSpan(map, lift);
+      const off = (view.time * 14.4) % 16;
+      const heroHere = heroNode.kind === 'lift' && heroNode.x * TILE === lx;
+      const upFrom = lift.route < 0 ? bottom - 6 : bottom;
+      for (let y = upFrom - off; y > top + 2; y -= 16) {
+        if (heroHere && Math.abs(y - heroY) < 12) continue;
+        b.drawImage(chair, lx + 2, Math.round(y) - 2);
+      }
+      for (let y = top + off; y < upFrom - 4; y += 16) b.drawImage(chair, lx + 7, Math.round(y) - 2);
     }
-    for (let y = top + off; y < bottom - 4; y += 16) b.drawImage(chair, lx + 7, Math.round(y) - 2);
   }
 
   private drawEnemy(run: Run, e: Enemy, x: number, y: number, time: number): void {
@@ -355,16 +427,13 @@ export class MapRenderer {
     const py = y * TILE;
     let name: SpriteName = e.kind === 'snowmobile' ? 'snowmobile' : e.kind;
     let flip = false;
-    if (e.kind === 'snowmobile' || e.kind === 'baron') {
-      const dir = run.map.path[tileAt(run.map, e.s)].dir;
-      flip = dir === 'left';
-    }
+    if (e.ride) flip = dirOf(run.map, e.ride.at, e.ride.to) === 'left';
     if (e.kind === 'sniper') name = 'sniper';
     const sprite = this.atlas.get(name, flip);
     const big = e.kind === 'baron' ? 2 : 1;
     const w = sprite.width * big;
     const h = sprite.height * big;
-    const bob = e.s < 0 && e.kind !== 'sniper' ? Math.floor(time * 2 + e.id * 0.37) % 2 : 0;
+    const bob = !e.ride && e.kind !== 'sniper' ? Math.floor(time * 2 + e.id * 0.37) % 2 : 0;
     const left = Math.round(px - w / 2);
     const topY = Math.round(e.kind === 'sniper' ? py - 11 : py - h + 5) - bob;
     if (e.kind !== 'sniper') {
@@ -396,7 +465,8 @@ export class MapRenderer {
     const b = this.bctx;
     const map = run.map;
     const hero = run.state.hero;
-    const p = map.path[tileAt(map, view.heroS)];
+    const p = map.nodes[rideNode(hero.ride)];
+    const dir: Dir = run.state.status === 'riding' ? dirOf(map, hero.ride.at, hero.ride.to) : 'down';
     const px = Math.round(x * TILE);
     const py = Math.round(y * TILE);
     const moving = run.state.status === 'riding' && !view.paused;
@@ -406,9 +476,9 @@ export class MapRenderer {
     }
     let name: SpriteName = 'heroDown';
     let flip = false;
-    if (p.dir === 'left' || p.dir === 'right') {
+    if (dir === 'left' || dir === 'right') {
       name = hero.stance === 'tuck' ? 'heroSideTuck' : 'heroSide';
-      flip = p.dir === 'left';
+      flip = dir === 'left';
     } else if (hero.stance === 'tuck') name = 'heroDownTuck';
     else if (hero.stance === 'plow') name = 'heroDownPlow';
     const air = hero.airborne ? 5 : 0;
@@ -418,7 +488,7 @@ export class MapRenderer {
     b.fillStyle = 'rgba(20,20,20,0.2)';
     b.fillRect(px - 4, py + 3, 8, 2);
     if (moving && hero.stance === 'tuck') {
-      const back = p.dir === 'down' ? [0, -1] : p.dir === 'right' ? [-1, 0] : [1, 0];
+      const back = { down: [0, -1], up: [0, 1], right: [-1, 0], left: [1, 0] }[dir];
       for (let k = 0; k < 3; k++) {
         const len = 3 + ((Math.floor(view.time * 20) + k) % 3);
         const ox = back[0] * (9 + k * 2) + (back[1] ? (k - 1) * 4 : 0);
@@ -441,11 +511,11 @@ function canvas2(w: number, h: number): [HTMLCanvasElement, CanvasRenderingConte
 }
 
 /** Snow with contour lines: a vintage piste map, unique to the seed. */
-function buildBackground(map: LoopMap): HTMLCanvasElement {
+function buildBackground(map: MountainMap): HTMLCanvasElement {
   const [c, ctx] = canvas(ART_W, ART_H);
   const img = ctx.createImageData(ART_W, ART_H);
   const [a, b2, c2, d] = hashSeed(`bg:${map.seed}`).map((v) => (v / 4294967296) * Math.PI * 2);
-  const top = map.path[map.summit];
+  const top = map.nodes[map.summit];
   const sx = top.x * TILE + 8;
   const sy = top.y * TILE + 8;
   const height = (x: number, y: number) =>
@@ -474,6 +544,23 @@ function buildBackground(map: LoopMap): HTMLCanvasElement {
   }
   ctx.putImageData(img, 0, 0);
   return c;
+}
+
+/** Where a lift line runs, in art pixels: its column, and from its top station to its bottom one. */
+function liftSpan(map: MountainMap, lift: Segment): { x: number; top: number; bottom: number } {
+  const from = map.nodes[lift.from];
+  const to = map.nodes[lift.to];
+  if (lift.route < 0) return { x: from.x * TILE, top: to.y * TILE + 8, bottom: from.y * TILE + 8 };
+  return { x: from.x * TILE, top: to.y * TILE + 14, bottom: from.y * TILE + 2 };
+}
+
+/** A small black diamond, centred on (cx, top). */
+function diamond(ctx: CanvasRenderingContext2D, cx: number, top: number): void {
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(cx - 3, top - 1, 7, 9);
+  ctx.fillStyle = INK;
+  for (let k = 0; k < 4; k++) ctx.fillRect(cx - k, top + k, 1 + k * 2, 1);
+  for (let k = 0; k < 3; k++) ctx.fillRect(cx - 2 + k, top + 4 + k, 5 - k * 2, 1);
 }
 
 /** A 3x3 of peaks becomes one big mountain with a double-black-diamond sign. */

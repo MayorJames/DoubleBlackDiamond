@@ -1,9 +1,10 @@
 // The lodge screen: what you have banked, buildings to spend it on, and the next expedition
-// (trail rating, seed and the deck your buildings have unlocked).
+// (trail rating, seed, and the deck you choose from the cards your buildings have unlocked).
 
 import { CARDS } from '../game/cards';
 import { RATINGS } from '../game/enemies';
-import { BUILDINGS, canAfford, deckFor, type BuildingId, type Profile } from '../game/lodge';
+import { BUILDINGS, canAfford, DECK_MAX, DECK_MIN, deckFor, unlockedCards, type BuildingId, type Profile } from '../game/lodge';
+import type { CardId } from '../game/cards';
 import { spriteUrl, type SpriteName } from '../render/sprites';
 import { cardArt, formatCash } from './runUi';
 
@@ -13,6 +14,7 @@ const RATING_SYMBOLS = ['●', '■', '◆', '◆◆'];
 
 export interface LodgeHooks {
   build: (id: BuildingId) => void;
+  toggleCard: (id: CardId) => void;
   start: (rating: number, seed: string) => void;
   newSeed: () => string;
 }
@@ -27,6 +29,10 @@ export class LodgeUi {
     $('start').addEventListener('click', () => {
       const seed = $<HTMLInputElement>('seed-input').value.trim().toUpperCase() || hooks.newSeed();
       hooks.start(this.rating, seed);
+    });
+    $('deck').addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-card]');
+      if (b && !b.disabled) hooks.toggleCard(b.dataset.card as CardId);
     });
     $('buildings').addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-build]');
@@ -57,12 +63,21 @@ export class LodgeUi {
       : 'No expeditions yet. The mountain is waiting.';
     this.renderRatings(p);
 
+    // Every unlocked card, in or out of the deck. Full decks can't take more; small ones can't shrink.
     const deck = deckFor(p);
+    $('deck-count').textContent = `${deck.length}/${DECK_MAX}`;
     $('deck').replaceChildren(
-      ...deck.map((id) => {
-        const s = document.createElement('span');
-        s.innerHTML = `<img alt="" src="${cardArt(id)}">${CARDS[id].name}`;
-        return s;
+      ...unlockedCards(p).map((id) => {
+        const inDeck = deck.includes(id);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.card = id;
+        b.className = inDeck ? 'in' : 'out';
+        b.disabled = inDeck ? deck.length <= DECK_MIN : deck.length >= DECK_MAX;
+        b.title = `${CARDS[id].name}: ${CARDS[id].text}${b.disabled ? (inDeck ? ` (a deck needs at least ${DECK_MIN} cards)` : ' (deck full: take a card out first)') : ''}`;
+        b.setAttribute('aria-pressed', String(inDeck));
+        b.innerHTML = `<img alt="" src="${cardArt(id)}">${CARDS[id].name}`;
+        return b;
       }),
     );
 

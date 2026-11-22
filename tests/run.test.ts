@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { CARDS, type CardId } from '../src/game/cards';
 import { DT, MAP_H, MAP_W } from '../src/game/constants';
 import { bankRun, build, deckFor, newProfile, STARTER_DECK } from '../src/game/lodge';
-import { cell, generateMap, isPath, isRoadside, neighbours, type LoopMap } from '../src/game/map';
+import { cell, generateMap, isPath, isRoadside, LODGE, neighbours, type MountainMap } from '../src/game/map';
 import { Run, type Command } from '../src/game/run';
 
-const besideTrail = (map: LoopMap, x: number, y: number) =>
-  !isPath(map, x, y) && neighbours(x, y).some(([nx, ny]) => map.path[map.index[cell(nx, ny)]]?.kind === 'trail');
+const besideTrail = (map: MountainMap, x: number, y: number) =>
+  !isPath(map, x, y) && neighbours(x, y).some(([nx, ny]) => map.nodes[map.index[cell(nx, ny)]]?.kind === 'trail');
 
 const SEEDS = ['alpine', 'powder', 'mogul', 'whiteout', 'yeti', 'QX7P2M', 'B4R0N'];
 const ALL: CardId[] = Object.keys(CARDS) as CardId[];
@@ -42,25 +42,27 @@ describe('the loop', () => {
   it('is a closed circuit from the lodge, up the lift and down the trail', () => {
     for (const seed of SEEDS) {
       const map = generateMap(seed);
-      const { path } = map;
-      expect(path[0].kind).toBe('lodge');
-      expect(path[map.summit].kind).toBe('summit');
+      const { nodes } = map;
+      expect(nodes[LODGE].kind).toBe('lodge');
+      expect(nodes[map.summit].kind).toBe('summit');
+      expect(nodes.length).toBe(map.loopLength);
       const seen = new Set<number>();
-      path.forEach((p, i) => {
-        const next = path[(i + 1) % path.length];
+      nodes.forEach((p, i) => {
+        expect(p.next).toEqual([(i + 1) % nodes.length]);
+        const next = nodes[p.next[0]];
         expect(Math.abs(p.x - next.x) + Math.abs(p.y - next.y)).toBe(1);
         expect(p.x >= 0 && p.y >= 0 && p.x < MAP_W && p.y < MAP_H).toBe(true);
         seen.add(cell(p.x, p.y));
         if (i > 0 && i < map.summit) expect(p.kind).toBe('lift');
       });
-      expect(seen.size).toBe(path.length);
-      expect(path.length).toBeGreaterThan(28);
+      expect(seen.size).toBe(nodes.length);
+      expect(nodes.length).toBeGreaterThan(28);
     }
   });
 
   it('is the same loop for the same seed', () => {
-    expect(generateMap('alpine').path).toEqual(generateMap('alpine').path);
-    expect(generateMap('alpine').path).not.toEqual(generateMap('powder').path);
+    expect(generateMap('alpine').nodes).toEqual(generateMap('alpine').nodes);
+    expect(generateMap('alpine').nodes).not.toEqual(generateMap('powder').nodes);
   });
 });
 
@@ -71,7 +73,7 @@ describe('cards', () => {
     for (let y = 0; y < MAP_H; y++) {
       for (let x = 0; x < MAP_W; x++) {
         const i = map.index[cell(x, y)];
-        expect(run.canPlace('patrol', x, y)).toBe(i >= 0 && map.path[i].kind === 'trail');
+        expect(run.canPlace('patrol', x, y)).toBe(i >= 0 && map.nodes[i].kind === 'trail');
         expect(run.canPlace('cabin', x, y)).toBe(isRoadside(map, x, y));
         expect(run.canPlace('boulder', x, y)).toBe(!isPath(map, x, y));
         expect(run.canPlace('avalanche', x, y)).toBe(false);
@@ -192,7 +194,7 @@ describe('a run', () => {
     const wipe = fresh();
     wipe.state.hero.hp = 0.01;
     const at = wipe.heroPos();
-    wipe.state.enemies.push({ id: 99, kind: 'guard', level: 1, hp: 50, maxHp: 50, x: at.x, y: at.y, s: -1, home: -1, cooldown: 0 });
+    wipe.state.enemies.push({ id: 99, kind: 'guard', level: 1, hp: 50, maxHp: 50, x: at.x, y: at.y, ride: null, home: -1, cooldown: 0 });
     wipe.state.hero.stance = 'plow';
     for (let i = 0; i < 600 && !wipe.done; i++) {
       wipe.state.enemies[0].x = wipe.heroPos().x;
@@ -218,7 +220,7 @@ describe('a run', () => {
     const baron = run.state.enemies.find((e) => e.kind === 'baron')!;
     expect(baron).toBeDefined();
     baron.hp = 1;
-    baron.s = run.state.hero.s;
+    baron.ride = { ...run.state.hero.ride };
     run.state.hero.hp = 9999;
     for (let i = 0; i < 600 && !run.done; i++) run.step([{ type: 'stance', stance: 'plow' }]);
     expect(run.state.status).toBe('won');

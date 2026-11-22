@@ -271,13 +271,35 @@ input:focus-visible {
   gap: 4px;
 }
 
-.deck span {
+.deck button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 6px 2px 2px;
   border: 2px solid var(--ink);
+  background: var(--paper);
   font-size: 17px;
+  cursor: pointer;
+}
+
+.deck button.out {
+  border-style: dashed;
+  border-color: var(--mid);
+  color: var(--mid);
+  background: transparent;
+}
+
+.deck button.out img {
+  opacity: 0.4;
+}
+
+.deck button:disabled {
+  cursor: not-allowed;
+}
+
+.deck-hint {
+  margin: 0 0 4px;
+  font-size: 16px;
 }
 
 .deck img {
@@ -492,6 +514,10 @@ input:focus-visible {
 
 #map.placing {
   cursor: crosshair;
+}
+
+#map.switchable {
+  cursor: pointer;
 }
 
 #map-fx {
@@ -755,6 +781,11 @@ input:focus-visible {
   color: var(--paper);
 }
 
+.card.route .ckind {
+  background: repeating-linear-gradient(135deg, var(--ink) 0 4px, var(--dark) 4px 8px);
+  color: var(--paper);
+}
+
 .card img {
   place-self: center;
   width: 64px;
@@ -897,6 +928,34 @@ input:focus-visible {
   margin: 6px 0 6px;
   font-size: 17px;
   min-height: 34px;
+}
+
+.junction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 4px 6px;
+  border: 2px dashed var(--ink);
+}
+
+.junction > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.junction b {
+  font-size: 18px;
+}
+
+.junction.taking b {
+  color: var(--red);
+}
+
+.junction kbd {
+  font: inherit;
+  opacity: 0.6;
 }
 
 .stats {

@@ -5,6 +5,7 @@ import { CARDS, type CardId, type CardKind } from '../game/cards';
 import { DAY_SECONDS, MAP_W } from '../game/constants';
 import { ENEMIES } from '../game/enemies';
 import { GADGETS, RARITY_NAMES, type Item, type Slot, type StatKey } from '../game/items';
+import { nodeAt } from '../game/map';
 import type { Run } from '../game/run';
 import { STANCES, type Stance } from '../game/stats';
 import { spriteForCard, type MapRenderer } from '../render/mapRenderer';
@@ -23,13 +24,16 @@ const KIND_LABEL: Record<CardKind, string> = {
   roadside: 'Roadside',
   landscape: 'Landscape',
   special: 'Special',
+  route: 'Route',
 };
 const KIND_HINT: Record<CardKind, string> = {
   trail: 'Goes on the trail itself.',
   roadside: 'Goes beside the trail or lift.',
   landscape: 'Goes on any open snow.',
   special: 'Goes on a tile you already placed.',
+  route: 'Goes on the trail where there is a clear line straight up (lift) or down (chute) to more trail.',
 };
+const ROUTE_NAME = { lift: 'Chairlift', chute: 'Chute' } as const;
 const STANCE_TEXT: Record<Stance, string> = {
   tuck: '160% speed, 65% aim, +20% dodge. Builds mult on the trail.',
   cruise: 'Steady. No bonuses, no penalties.',
@@ -194,6 +198,7 @@ export class RunUi {
     this.text('day', String(st.day));
     $('day-fill').style.width = `${Math.min(100, (st.dayTimer / DAY_SECONDS) * 100).toFixed(1)}%`;
     this.text('lap', String(st.lap));
+    this.text('descent', String(st.descent));
     this.text('boss-count', st.boss.spawned ? 'HERE!' : `${st.boss.meter}/${st.boss.max}`);
     $('boss-fill').style.width = `${Math.min(100, (st.boss.meter / st.boss.max) * 100).toFixed(1)}%`;
     document.querySelector('.tb.boss')!.classList.toggle('hot', st.boss.spawned || st.boss.meter >= st.boss.max * 0.75);
@@ -213,6 +218,7 @@ export class RunUi {
       b.classList.toggle('on', b.dataset.stance === st.hero.stance),
     );
     this.text('stance-text', STANCE_TEXT[st.hero.stance]);
+    this.renderJunction(run);
 
     const stance = STANCES[st.hero.stance];
     const statsHtml = [
@@ -236,6 +242,17 @@ export class RunUi {
     this.renderHand(run);
     this.renderGear(run);
     this.renderCardTip(run);
+  }
+
+  /** The next junction ahead and which way it will send you. */
+  private renderJunction(run: Run): void {
+    const k = upcomingJunction(run);
+    const box = $('junction');
+    box.classList.toggle('hidden', k < 0);
+    if (k < 0) return;
+    const r = run.state.routes[k];
+    box.classList.toggle('taking', r.take);
+    this.text('junction-text', r.take ? `Take the ${ROUTE_NAME[r.kind]}` : `Ski past the ${ROUTE_NAME[r.kind]}`);
   }
 
   pulseHand(): void {
@@ -384,14 +401,34 @@ export class RunUi {
       const text = t.variant === 'dbd' ? '+40 max HP. A yeti comes down every 4 days.' : def.text;
       parts.push(`<span class="kind">${KIND_LABEL[def.kind]}</span><b>${name}</b>${text}`);
     }
-    const p = run.map.path[run.map.index[tile.y * MAP_W + tile.x]];
-    if (!t && p) {
-      const label = { lodge: 'The lodge', lift: 'Chairlift', summit: 'The summit', trail: 'The trail' }[p.kind];
+    const i = nodeAt(run.map, tile.x, tile.y);
+    const p = run.map.nodes[i];
+    if (p && p.junction >= 0) {
+      const r = run.state.routes[p.junction];
+      const name = ROUTE_NAME[r.kind];
+      parts.push(
+        `<span class="kind">Junction</span><b>${r.take ? `Taking the ${name}` : `Skiing past the ${name}`}</b>${
+          r.kind === 'lift'
+            ? r.take
+              ? 'Up the lift for another descent (+1 mult), instead of home to the lodge.'
+              : 'On down the trail towards the lodge.'
+            : r.take
+              ? 'Straight down the chute: fast and steep, skipping the trail in between.'
+              : 'On along the trail, past everything you built there.'
+        }<span class="kind">Click to switch · R switches the next one</span>`,
+      );
+    }
+    if (!t && p && p.junction < 0) {
+      const built = i >= run.map.loopLength;
+      const label = { lodge: 'The lodge', lift: 'Chairlift', summit: 'The summit', trail: 'The trail', chute: 'Chute' }[p.kind];
       const hint = {
         lodge: 'Each lap cashes in here. Ride again or call it a day.',
-        lift: 'The breather: you heal on the way up. Roadside cards still reach you.',
+        lift: built
+          ? 'A lift you built. Riding it chains another descent: +1 mult, and new enemies arrive a level higher. You heal on the way up.'
+          : 'The breather: you heal on the way up. Roadside cards still reach you.',
         summit: 'Top of the lift. The Baron starts here.',
         trail: 'Trail cards go here. Downhill is fast, traverses are slower.',
+        chute: 'Steep and fast: +0.2 mult a tile, but your aim suffers. Trail cards go here too; a kicker here is a cliff drop.',
       }[p.kind];
       parts.push(`<b>${label}</b>${hint}`);
     }
@@ -451,4 +488,9 @@ export class RunUi {
     this.last.set(key, value);
     return true;
   }
+}
+
+/** The route index of the next junction ahead, or -1. */
+function upcomingJunction(run: Run): number {
+  return run.state.status === 'riding' || run.state.status === 'lodge' ? run.nextJunction() : -1;
 }

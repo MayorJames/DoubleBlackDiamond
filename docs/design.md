@@ -19,7 +19,7 @@ When two ideas collide, the one that serves more of these wins.
 3. **Speed is the multiplier.** Each lap scores chips × mult, and tucking, fast laps and big air feed
    the mult.
 4. **Short runs, absurd builds.** Laps take 20 to 45 seconds and expeditions a few minutes, and the
-   best ones end in a broken combination of tiles and gadgets.
+   best ones end in a broken combination of tiles, routes and gadgets.
 5. **Small and instant.** A browser tab, about 30 kB of code, no image or sound files: every sprite
    and sound is made at startup.
 
@@ -31,18 +31,24 @@ When two ideas collide, the one that serves more of these wins.
    on the way past.
 3. Kills drop **cards, gear and resources**. Place cards to build the mountain as you go. Choosing a
    card pauses time so you can plan.
-4. Reaching the lodge ends the **lap**: its chips × mult cashes in, and you choose to **ride again**
-   (new enemies arrive a level higher) or **call it a day** and keep everything.
-5. Every card placed fills the **Baron alert**. When it is full, the Avalanche Baron chases you round
-   the loop in his snowcat. Beat him to win the expedition and unlock the next trail rating.
-6. Home at the lodge, spend what you brought back on **buildings** that unlock cards and perks for
-   every expedition after.
+4. **Route cards reshape the mountain.** A Chairlift climbs from the trail back up to the trail
+   above; a Chute drops straight down to the trail below. Each opens a **junction** whose switch you
+   flip at any time, so one mountain gives many different laps.
+5. Riding a lift you built **chains another descent** into the same lap: +1 mult, but new enemies
+   arrive a level higher each descent, and the lap's hand only cashes in at the lodge. This is the
+   vision's "ride again or ski on?" made a decision you take mid-run.
+6. Reaching the lodge ends the **lap**: its chips × mult cashes in, and you choose to **ride again**
+   or **call it a day** and keep everything.
+7. Every card placed fills the **Baron alert**. When it is full, the Avalanche Baron chases you round
+   the mountain in his snowcat. Beat him to win the expedition and unlock the next trail rating.
+8. Home at the lodge, spend what you brought back on **buildings** that unlock cards and perks for
+   every expedition after, and choose which unlocked cards make up your **deck**.
 
 ## Loop Hero, mapped
 
 | Loop Hero | Double Black Diamond |
 | --- | --- |
-| The loop road the hero walks | A ski circuit: lodge, lift up, switchback trail down |
+| The loop road the hero walks | A ski circuit (lodge, lift up, switchback trail down) that route cards branch into a network |
 | The hero walks and fights on their own | The skier skis and shoots on their own |
 | Stopping to fight each battle | Drive-by fights while you keep moving (you can't stop) |
 | No direct hero control | Stance: tuck, cruise or snowplow (speed against aim) |
@@ -50,11 +56,12 @@ When two ideas collide, the one that serves more of these wins.
 | Tile combos (mountain peaks, meadows by groves) | Double Black Diamond from a 3x3 of peaks; powder heals more beside pines; pines pay graze chips |
 | Oblivion | Avalanche |
 | Days that trigger tile spawns | Days that trigger spawns, respawns and healing |
-| Loop count raises enemy level | Each lap's new enemies arrive a level higher |
+| Loop count raises enemy level | Each descent's new enemies arrive a level higher |
 | Lich meter fills as you place tiles | Baron alert fills as you place cards |
 | Retreat at camp 100%, mid-loop 60%, death 30% | Call it a day 100%, bail out 60%, wipe out 30% |
 | Equipment drops with rarity | Gear drops: common (white), rare (black), legendary (red) |
 | Camp buildings unlock cards and perks | Lodge buildings unlock cards and perks |
+| Choosing a deck before an expedition | Choosing up to 8 unlocked cards at the lodge |
 | Resources from the expedition build the camp | Cash, intel and scrap build the lodge |
 
 ## The other influences
@@ -73,7 +80,29 @@ When two ideas collide, the one that serves more of these wins.
 ### The mountain
 
 An 18x10 grid. Each seed draws the lift on the left and a 2 to 4 switchback trail down. Downhill
-tiles are fast (2.4 tiles/s), traverses slower (1.8), the lift steady (0.9). A day is 10 seconds.
+tiles are fast (2.4 tiles/s), traverses slower (1.8), chutes fastest (3.0), lifts steady (0.9). A
+day is 10 seconds.
+
+The mountain is a directed graph of path tiles, rebuilt from the seed and the routes placed so far,
+so it never needs saving and replays exactly. Trail higher up always comes earlier in the loop, which
+gives the route rules for free:
+
+- A **Chairlift** goes on a trail tile with at least two open cells straight above it and more trail
+  beyond. It always lands on trail that leads back down to where it started, so it makes a loop
+  inside the lap.
+- A **Chute** goes on a trail tile with at least two open cells straight below and more trail
+  beyond. It always skips trail.
+- Routes can't cross anything you've placed, and each trail tile holds one junction. Every seed
+  tested has about a dozen places for each.
+- A new route's switch starts **on**, so placing one visibly changes your next lap. Click a junction,
+  or press R for the next one ahead, to flip it. A red rope closes the way it won't send you.
+  Snowmobiles and the Baron follow the same switches.
+
+| Route | Effect |
+| --- | --- |
+| Chained descent (boarding a lift you built) | +1 mult; descent count +1, so enemies placed after arrive a level up |
+| Chute tile | +2 chips (trail pays 1), +0.2 mult, aim x0.85 |
+| Kicker in a chute | A cliff drop: +50 chips and +1 mult instead of +25 and +0.5 |
 
 ### Cards
 
@@ -93,6 +122,8 @@ tiles are fast (2.4 tiles/s), traverses slower (1.8), the lift steady (0.9). A d
 | Peak | Landscape | +8 max HP; a 3x3 of peaks and boulders is a Double Black Diamond (+40 HP, yetis) |
 | Powder Field | Landscape | Heals every day, more beside pines |
 | Avalanche | Special | Wipes a placed tile and everything around it |
+| Chairlift | Route | A lift from the trail back up to the trail above: chain another descent |
+| Chute | Route | A steep shortcut straight down to the trail below |
 
 ### Combat
 
@@ -119,6 +150,7 @@ burn cards on purpose too.
 
 | Building | Unlocks |
 | --- | --- |
+| Trail Crew | Chute |
 | Ski Patrol Hut | Supply Cache, Powder Field |
 | Radio Tower | Sniper Nest, Snowmobile Garage |
 | Gondola Works | Kicker, Ice Sheet |
@@ -130,6 +162,10 @@ burn cards on purpose too.
 Trail ratings (Bunny Hill, Blue Square, Black Diamond, Double Black Diamond) scale enemies and the
 cash payout. Beating the Baron on your highest rating unlocks the next.
 
+You start owning Patrol Post, Chairlift, Guard Cabin, Mogul Field, Pine Grove and Boulder. Your deck
+holds 4 to 8 different cards chosen from everything unlocked; new unlocks join it while there is
+room. A small deck makes the cards you want come up more often; a wide one covers more situations.
+
 ## What changed from the original vision, and why
 
 - **First person to top-down.** Building the mountain is the heart of the game, and it reads far
@@ -140,14 +176,40 @@ cash payout. Beating the Baron on your highest rating unlocks the next.
 - **Three.js dropped.** A 2D canvas is all a top-down map needs; the download fell from about 170 kB
   to about 30 kB.
 - **Payouts follow Loop Hero.** 100% / 60% / 30% replaces "halve the payout on death".
+- **"Ride again?" at any lift.** The vision's mid-run choice is now a junction switch on every lift
+  you build, so chaining descents is a bet you can change your mind about until the last moment.
 - **Kept:** the lodge, cards, chips × mult, speed as the multiplier, trail ratings, bosses, seeded
-  runs, the lift as the breather, and the deterministic, multiplayer-ready simulation.
+  runs, the lift as the breather, lift cards and forks, and the deterministic, multiplayer-ready
+  simulation.
+- **Open question:** the vision has the mountain persist between runs; Loop Hero rebuilds it each
+  expedition, and so does this version for now. A middle ground is that routes persist and tiles
+  don't.
+
+## Progress against the vision's prototype order
+
+| Phase | Step | Status |
+| --- | --- | --- |
+| Feel | Slope, tuck and snowplow, fixed timestep, seeded run | Done in first person, then carried over as stance |
+| Feel | Shooting and guards, speed against accuracy | Done in first person; now drive-by combat with stance |
+| Feel | Chips × mult and a payout | Done |
+| Build | Two weapon and two utility slots | Partly: gun, skis, goggles, jacket and up to two gadgets |
+| Build | The lift ride: steady aim, enemies along it | Done: you heal and aim steadier; roadside cards reach you |
+| Build | Two lifts, a fork and "Ride again?" | Done: Chairlift and Chute cards, junction switches, chained descents |
+| Meta | The lodge, payout and death penalty | Done (100/60/30%) |
+| Meta | Segment graph and card placement | Done, within an expedition (see the open question above) |
+| Meta | Drops, shops, card burning, unlocks, seeded runs | Partly: drops, burning, buildings and seeds; no shops yet |
+| Meta | The four trail ratings | Done |
+| Meta | Boss cards from intel dossiers | Not yet: the Baron comes from a meter instead |
+| Meta | The snowboarder | Not yet |
+| Polish | Fog, juice, soundtrack | Partly: card juice and sound effects; no music or weather |
+| Multiplayer | Second player and split screen | Not yet; the simulation rules allow it |
 
 ## Next
 
-- **Lift cards** that add a second lift and a fork, so later expeditions chain several descents.
-- **Intel dossiers** that assemble into boss cards with one-of-a-kind rewards, and more bosses.
-- **Deck choice** before each expedition, as in Loop Hero, once there are enough cards to choose from.
+- **Intel dossiers** that assemble into boss cards with one-of-a-kind rewards, and more bosses. The
+  vision gates them on finishing runs on a mountain with two lifts, which is now possible.
+- **Weather cards** (whiteout, night) and more synergies with routes: snipers in the chairs, a
+  gondola, moguls that only pay in a chute.
+- **A shop** at the lodge or mid-run, so cards and gear can be bought as well as found.
 - **The snowboarder** as a second class with its own handling and stances.
-- More synergies, weather cards (whiteout, night), a soundtrack, daily seeds, and a race on a shared
-  seed.
+- A soundtrack, daily seeds, and a race on a shared seed.
