@@ -498,6 +498,45 @@ h2 .count {
   color: var(--dark);
 }
 
+.locker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 4px;
+}
+
+.locker-item {
+  display: grid;
+  place-items: center;
+  height: 42px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+}
+
+.locker-item.r1 {
+  background: var(--ink);
+}
+
+.locker-item.r2 {
+  background: var(--red);
+}
+
+.locker-item img {
+  width: 36px;
+  height: 36px;
+  image-rendering: pixelated;
+}
+
+.locker-item.unseen {
+  border-style: dashed;
+  border-color: var(--light);
+  background: var(--shade);
+}
+
+.locker-item.unseen img {
+  opacity: 0.15;
+  filter: grayscale(1);
+}
+
 /* ---------------- The mountain builder ---------------- */
 .mountain-body {
   display: grid;
@@ -1409,6 +1448,38 @@ h2 .count {
 
 .tip .neg {
   color: var(--red);
+}
+
+.tip .mod {
+  display: block;
+  margin-top: 4px;
+  padding: 2px 4px;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.tip-art.icon {
+  background: var(--shade);
+}
+
+.offer.gear .ckind {
+  background: var(--paper);
+}
+
+.offer.gear.r1 .ckind {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.offer.gear.r2 .ckind {
+  background: var(--red);
+  color: var(--paper);
+}
+
+.offer.gear img {
+  width: 60px;
+  height: 60px;
+  background: var(--shade);
 }
 
 #card-tip {

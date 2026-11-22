@@ -86,6 +86,9 @@ export interface Enemy {
   cooldown: number;
   /** Seconds until its special move (a boss's call, a medic's heal), for those that have one. */
   ability?: number;
+  /** Seconds it's stunned (no moving, no shooting) or slowed (firing half as fast) by your gun. */
+  stun?: number;
+  slow?: number;
 }
 
 /** Stat multiplier for an enemy's level (the descent it arrived on) and the mountain's difficulty. */

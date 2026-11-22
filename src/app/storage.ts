@@ -18,6 +18,8 @@ export function loadProfile(seed: string): Profile {
       // Saves from before the mountain builder: the trail ratings they'd unlocked become signs.
       if (!saved.tiles) p.tiles = { ...STARTING_TILES, blackRun: saved.rating ?? 0 };
       p.tiles = { ...STARTING_TILES, ...p.tiles };
+      // Saves from before named gear start with an empty locker.
+      if (!Array.isArray(p.seenItems)) p.seenItems = ['pocketPistol'];
       return p;
     }
   } catch {

@@ -4,7 +4,7 @@
 import { CARDS, type CardId, type CardKind } from '../game/cards';
 import { MAP_W } from '../game/constants';
 import { ENEMIES } from '../game/enemies';
-import { GADGETS, RARITY_NAMES, type Item, type Slot, type StatKey } from '../game/items';
+import { ITEM_BY_ID, MODS, RARITY_NAMES, type Item, type Slot, type StatKey } from '../game/items';
 import { nodeAt } from '../game/map';
 import { FRAGMENT_LAP, type Run } from '../game/run';
 import { STANCES, type Stance } from '../game/stats';
@@ -103,14 +103,36 @@ const artCache = new Map<string, string>();
 /** A card's illustration at the size the hand shows it. */
 export const cardArt = (card: CardId): string => cardArtUrl(card, 2);
 
-function iconUrl(item: Item): string {
-  const key = `${item.slot}:${item.rarity}`;
+/** An item's icon (its own family's, in its rarity's colours) at a scale. */
+export function iconUrl(item: Pick<Item, 'def' | 'slot' | 'rarity'>, scale = 3): string {
+  const icon = ITEM_BY_ID[item.def]?.icon ?? ICON_FOR[item.slot];
+  const key = `${icon}:${item.rarity}:${scale}`;
   let url = artCache.get(key);
   if (!url) {
-    url = spriteUrl(ICON_FOR[item.slot], 3, RARITY_RECOLOR[item.rarity]);
+    url = spriteUrl(icon, scale, RARITY_RECOLOR[item.rarity]);
     artCache.set(key, url);
   }
   return url;
+}
+
+/** An item's description for a tooltip: its numbers (against what it would replace), mod and flavour. */
+export function itemHtml(item: Item, compare: Item | null, hint = ''): string {
+  const lines = (Object.entries(item.stats) as [StatKey, number][]).map(([k, v]) => {
+    const d = v - (compare?.stats[k] ?? 0);
+    const delta = compare ? ` <span class="${d < 0 ? 'neg' : ''}">(${formatStat(k, d)})</span>` : '';
+    return `${STAT_LABEL[k]} ${formatStat(k, v)}${delta}`;
+  });
+  if (compare) {
+    for (const [k, v] of Object.entries(compare.stats) as [StatKey, number][]) {
+      if (item.stats[k] === undefined) lines.push(`<span class="neg">${STAT_LABEL[k]} ${formatStat(k, -v)}</span>`);
+    }
+  }
+  const mod = item.mod ? `<span class="mod">${MODS[item.mod]}</span>` : '';
+  const flavor = ITEM_BY_ID[item.def]?.flavor;
+  const slotName = item.slot === 'gadget' ? 'gadget' : item.slot;
+  return `<span class="kind">${RARITY_NAMES[item.rarity]} ${slotName}${item.unique ? ' · one of a kind' : ''} · level ${item.level}</span><b>${item.name}</b>${lines.join('<br>')}${mod}${
+    flavor ? `<i>${flavor}</i>` : ''
+  }${hint}`;
 }
 
 export interface RunUiHooks {
@@ -350,12 +372,19 @@ export class RunUi {
     this.shopKey = key;
     this.shopEl.replaceChildren(
       ...st.shop.map((o, i) => {
-        const def = CARDS[o.card];
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = `offer ${def.kind}${bought ? ' bought' : ''}`;
         b.dataset.offer = String(i);
         b.disabled = !live || points < o.price;
+        if (o.kind === 'gear') {
+          b.className = `offer gear r${o.item.rarity}${bought ? ' bought' : ''}`;
+          if (!this.settings.cardTips) b.title = `${o.item.name} (${o.price} points)${o.item.mod ? `: ${MODS[o.item.mod]}` : ''}`;
+          b.setAttribute('aria-label', `Buy ${o.item.name} for ${o.price} points`);
+          b.innerHTML = `<span class="ckind">${RARITY_NAMES[o.item.rarity]} gear</span><img alt="" src="${iconUrl(o.item, 5)}"><span class="price">${o.price} pts</span>`;
+          return b;
+        }
+        const def = CARDS[o.card];
+        b.className = `offer ${def.kind}${bought ? ' bought' : ''}`;
         if (!this.settings.cardTips) b.title = `${def.name} (${o.price} points): ${def.text}`;
         b.setAttribute('aria-label', `Buy ${def.name} for ${o.price} points`);
         b.innerHTML = `<span class="ckind">${KIND_LABEL[def.kind]}</span><img alt="" src="${cardArt(o.card)}"><span class="price">${o.price} pts</span>`;
@@ -389,17 +418,24 @@ export class RunUi {
     }
     const i = this.hoverCard;
     const o = this.hoverOffer !== null ? run.state.shop[this.hoverOffer] : undefined;
-    const card = !this.settings.cardTips ? undefined : o ? o.card : i !== null && i !== this.selected ? run.state.hand[i] : undefined;
-    if (!card) {
+    const card = !this.settings.cardTips ? undefined : o ? (o.kind === 'card' ? o.card : null) : i !== null && i !== this.selected ? run.state.hand[i] : undefined;
+    const gear = this.settings.cardTips && o?.kind === 'gear' ? o.item : null;
+    if (!card && !gear) {
       this.cardTip.classList.add('hidden');
       this.last.delete('cardtip');
       return;
     }
-    const def = CARDS[card];
     const action = o
-      ? `${o.price} points · ${Math.floor(run.state.points) >= o.price ? 'click to buy (the shop then rerolls)' : `you need ${o.price - Math.floor(run.state.points)} more`}`
+      ? `${o.price} points · ${Math.floor(run.state.points) >= o.price ? `click to buy${gear ? ' (into your pack)' : ''}; the shop then rerolls` : `you need ${o.price - Math.floor(run.state.points)} more`}`
       : 'Click to place · right-click to burn';
-    const html = `<img class="tip-art" alt="" src="${cardArtUrl(card, 3)}"><span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i><span class="kind">${action}</span>`;
+    let html: string;
+    if (gear) {
+      const compare = gear.slot === 'gadget' ? null : run.state.equipment[gear.slot];
+      html = `<img class="tip-art icon" alt="" src="${iconUrl(gear, 8)}">${itemHtml(gear, compare, `<span class="kind">${action}</span>`)}`;
+    } else {
+      const def = CARDS[card!];
+      html = `<img class="tip-art" alt="" src="${cardArtUrl(card!, 3)}"><span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i><span class="kind">${action}</span>`;
+    }
     if (this.changed('cardtip', html)) this.cardTip.innerHTML = html;
     this.cardTip.classList.remove('hidden');
     // Sit over the hovered card, kept inside the hand area.
@@ -458,24 +494,8 @@ export class RunUi {
       if (item) compare = item.slot === 'gadget' ? null : run.state.equipment[item.slot];
     } else if (target?.dataset.slot) item = run.state.equipment[target.dataset.slot as Slot];
     if (!item) return this.hideTip();
-    const lines = (Object.entries(item.stats) as [StatKey, number][]).map(([k, v]) => {
-      const d = v - (compare?.stats[k] ?? 0);
-      const delta = compare ? ` <span class="${d < 0 ? 'neg' : ''}">(${formatStat(k, d)})</span>` : '';
-      return `${STAT_LABEL[k]} ${formatStat(k, v)}${delta}`;
-    });
-    if (compare) {
-      for (const [k, v] of Object.entries(compare.stats) as [StatKey, number][]) {
-        if (item.stats[k] === undefined) lines.push(`<span class="neg">${STAT_LABEL[k]} ${formatStat(k, -v)}</span>`);
-      }
-    }
-    const gadget = item.gadget ? `<i>${GADGETS[item.gadget].text}</i>` : '';
-    const slotName = item.slot === 'gadget' ? 'gadget' : item.slot;
     const hint = target?.dataset.item ? '<span class="kind">Click to wear · right-click to scrap</span>' : '';
-    this.showTip(
-      `<span class="kind">${RARITY_NAMES[item.rarity]} ${slotName} · level ${item.level}</span><b>${item.name}</b>${lines.join('<br>') || ''}${gadget}${hint}`,
-      e.clientX,
-      e.clientY,
-    );
+    this.showTip(itemHtml(item, compare, hint), e.clientX, e.clientY);
   }
 
   showTip(html: string, x: number, y: number): void {

@@ -4,7 +4,7 @@
 import { MAP_H, MAP_W } from './constants';
 import { countAround, type Tiles } from './cards';
 import { cell } from './map';
-import type { GadgetId, Item, Slot, StatKey } from './items';
+import type { Item, ModId, Slot, StatKey } from './items';
 
 export type Stats = Record<StatKey, number>;
 export type Stance = 'tuck' | 'cruise' | 'plow';
@@ -39,11 +39,13 @@ export interface LodgeBonuses {
   rarityBoost: number;
   gadgetSlots: number;
   gadgetDrops: boolean;
-  /** The Armory: a better starting pistol. */
+  /** The Armory: a better starting pistol, and the best guns can drop. */
   armory: boolean;
+  /** The Rental Shop: its premium skis, goggles and jackets can drop. */
+  rental: boolean;
 }
 
-export const NO_BONUSES: LodgeBonuses = { maxHpPct: 0, speedPct: 0, rarityBoost: 0, gadgetSlots: 1, gadgetDrops: false, armory: false };
+export const NO_BONUSES: LodgeBonuses = { maxHpPct: 0, speedPct: 0, rarityBoost: 0, gadgetSlots: 1, gadgetDrops: false, armory: false, rental: false };
 
 export type Equipment = Record<Slot, Item | null>;
 
@@ -76,8 +78,11 @@ export function computeStats(equipment: Equipment, tiles: Tiles, bonuses: LodgeB
   return s;
 }
 
-export const hasGadget = (equipment: Equipment, g: GadgetId): boolean =>
-  equipment.gadget1?.gadget === g || equipment.gadget2?.gadget === g;
+/** Whether anything you're wearing (or carrying in a gadget slot) does `mod`. */
+export const hasMod = (equipment: Equipment, mod: ModId): boolean => Object.values(equipment).some((i) => i?.mod === mod);
+
+/** Old name for hasMod. */
+export const hasGadget = hasMod;
 
 /** Healing a Powder Field gives at the start of each lap. */
 export const powderHeal = (tiles: Tiles, x: number, y: number): number => 8 + 2 * countAround(tiles, x, y, 'pines');

@@ -71,6 +71,8 @@ export interface Profile {
   /** Your home mountain, and the course tiles you have to build it with. */
   mountain: MountainPlan;
   tiles: TileStock;
+  /** Every piece of gear you've ever found, by its def id, for the gear locker. */
+  seenItems: string[];
   /** The last expedition's weather and how it ended, for the town to echo. */
   lastRun: { weather: WeatherKind | 'clear'; status: RunStatus } | null;
 }
@@ -89,6 +91,7 @@ export const newProfile = (seed = 'FIRSTRUN'): Profile => ({
   trophies: [],
   mountain: newPlan(seed),
   tiles: { ...STARTING_TILES },
+  seenItems: ['pocketPistol'],
   lastRun: null,
 });
 
@@ -129,6 +132,7 @@ export function bonusesFor(p: Profile): LodgeBonuses {
     gadgetSlots: has('spyHq') ? 2 : 1,
     gadgetDrops: has('spyHq'),
     armory: has('armory'),
+    rental: has('rental'),
   };
 }
 
@@ -157,8 +161,9 @@ const BOSS_TILE: Record<BossKind, CourseTile> = { widow: 'gates', yetiKing: 'tun
  * (four at most), a special tile for each dossier boss, and for beating the Baron two more trail
  * tiles and a Black Run sign. Returns the tiles earned.
  */
-export function bankRun(p: Profile, status: RunStatus, payout: Payout, bosses: readonly BossKind[] = [], laps = 0): CourseTile[] {
+export function bankRun(p: Profile, status: RunStatus, payout: Payout, bosses: readonly BossKind[] = [], laps = 0, found: readonly string[] = []): CourseTile[] {
   for (const b of bosses) if (!p.trophies.includes(b)) p.trophies.push(b);
+  for (const id of found) if (!p.seenItems.includes(id)) p.seenItems.push(id);
   p.cash += payout.cash;
   p.intel += payout.intel;
   p.scrap += payout.scrap;

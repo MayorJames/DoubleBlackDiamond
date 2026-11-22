@@ -101,8 +101,9 @@ describe('the shop', () => {
   it('offers three cards from your deck, priced in points that rise each lap', () => {
     const run = Run.create({ seed: 'alpine', deck: STARTER_DECK });
     expect(run.state.shop).toHaveLength(3);
-    expect(new Set(run.state.shop.map((o) => o.card)).size).toBe(3);
-    for (const o of run.state.shop) {
+    const cards = run.state.shop.flatMap((o) => (o.kind === 'card' ? [o] : []));
+    expect(new Set(cards.map((o) => o.card)).size).toBe(cards.length);
+    for (const o of cards) {
       expect(STARTER_DECK).toContain(o.card);
       expect(o.price).toBe(run.price(o.card));
     }
@@ -115,6 +116,7 @@ describe('the shop', () => {
     const run = Run.create({ seed: 'powder', deck: STARTER_DECK });
     run.state.points = 1000;
     const offer = run.state.shop[1];
+    if (offer.kind !== 'card') throw new Error('the middle offer is always a card');
     const hand = run.state.hand.length;
     const before = JSON.stringify(run.state.shop);
     run.applyCommands([{ type: 'buy', offer: 1 }]);
@@ -123,6 +125,21 @@ describe('the shop', () => {
     expect(run.state.points).toBe(1000 - offer.price);
     expect(JSON.stringify(run.state.shop)).not.toBe(before);
     expect(run.drainEvents().some((e) => e.type === 'bought')).toBe(true);
+  });
+
+  it('sometimes offers a piece of gear in the last slot, which goes in your pack', () => {
+    let seen = 0;
+    for (const seed of ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g9', 'g10']) {
+      const run = Run.create({ seed, deck: STARTER_DECK });
+      const gear = run.state.shop[2];
+      if (gear?.kind !== 'gear') continue;
+      seen++;
+      run.state.points = 1000;
+      run.applyCommands([{ type: 'buy', offer: 2 }]);
+      expect(run.state.inventory.map((i) => i.def)).toContain(gear.item.def);
+      expect(run.state.record.found).toContain(gear.item.def);
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 
   it("can't buy what you can't afford; rerolling costs more each time in a lap", () => {

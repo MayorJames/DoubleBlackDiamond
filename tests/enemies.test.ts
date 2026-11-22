@@ -31,7 +31,7 @@ function nextDescent(run: Run): void {
     run.state.hero.hp = 9999;
     run.step();
   }
-  run.step([{ type: 'rideAgain' }]);
+  run.applyCommands([{ type: 'rideAgain' }]);
 }
 
 describe('enemy cards', () => {

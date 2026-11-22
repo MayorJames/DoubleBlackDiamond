@@ -524,10 +524,15 @@ export class App {
           break;
         case 'bought': {
           const me = run.heroPos();
-          this.runUi.pop(`Bought ${CARDS[e.card].name}`, me.x, me.y - 1.4, 'loot');
+          this.runUi.pop(`Bought ${e.name}`, me.x, me.y - 1.4, 'loot');
           this.sfx.chaChing();
           break;
         }
+        case 'saved':
+          this.runUi.banner('Airbag! You survive on 1 HP. That was your one.');
+          this.sfx.alarm();
+          this.renderer.shake = 1;
+          break;
         case 'reroll':
           this.sfx.chipTick(3);
           break;
@@ -584,7 +589,7 @@ export class App {
     if (!this.banked && st.payout) {
       this.banked = true;
       const laps = st.status === 'retreated' || st.status === 'won' ? st.lap : st.lap - 1;
-      this.earnedTiles = bankRun(this.profile, st.status, st.payout, st.record.bosses, laps);
+      this.earnedTiles = bankRun(this.profile, st.status, st.payout, st.record.bosses, laps, st.record.found);
       this.profile.lastRun = { weather: st.weather?.kind ?? 'clear', status: st.status };
       saveProfile(this.profile);
     }

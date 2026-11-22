@@ -9,7 +9,8 @@ import { COURSE_TILE_IDS, COURSE_TILES, tilesInUse, type CourseTile } from '../g
 import { cardArtUrl } from '../render/art/cardArt';
 import { courseIconUrl } from '../render/art/courseArt';
 import { buildingIcon, LodgeScene } from '../render/art/lodgeScene';
-import { formatCash } from './runUi';
+import { ITEM_DEFS, makeItem, MODS, RARITY_NAMES } from '../game/items';
+import { formatCash, iconUrl } from './runUi';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -116,6 +117,24 @@ export class TownUi {
     );
 
     $('buildings').replaceChildren(...BUILDINGS.map((b) => this.buildingCard(p, b)));
+
+    // The gear locker: found items in their colours, the rest as silhouettes.
+    const seen = new Set(p.seenItems ?? []);
+    const shown = ITEM_DEFS.filter((d) => !d.starter);
+    $('locker-count').textContent = `${shown.filter((d) => seen.has(d.id)).length}/${shown.length}`;
+    $('locker').replaceChildren(
+      ...shown.map((d) => {
+        const el = document.createElement('span');
+        const found = seen.has(d.id);
+        el.className = `locker-item${found ? ` r${d.rarity}` : ' unseen'}`;
+        const item = makeItem(d, 0, 1);
+        el.innerHTML = `<img alt="" src="${iconUrl(item, 3)}">`;
+        el.title = found
+          ? `${d.name} (${RARITY_NAMES[d.rarity]} ${d.slot})${d.mod ? `: ${MODS[d.mod]}` : ''} ${d.flavor}`
+          : `Not found yet: a ${RARITY_NAMES[d.rarity].toLowerCase()} ${d.slot}${d.unique ? ' (a boss drops it)' : d.unlock ? ` (needs the ${d.unlock === 'armory' ? 'Armory' : d.unlock === 'rental' ? 'Rental Shop' : 'Spy HQ'})` : ''}.`;
+        return el;
+      }),
+    );
 
     // The Trail Crew's yard: what you have (on the mountain and in stock), and what's for sale.
     const used = tilesInUse(p.mountain);

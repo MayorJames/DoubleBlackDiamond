@@ -329,7 +329,7 @@ describe('dossier bosses', () => {
     }
     expect(events.some((e) => e.type === 'bossDown' && e.kind === 'widow')).toBe(true);
     expect(run.state.cash).toBeGreaterThanOrEqual(cash + 1000);
-    const monocle = run.state.inventory.find((i) => i.gadget === 'monocle');
+    const monocle = run.state.inventory.find((i) => i.mod === 'monocle');
     expect(monocle?.unique).toBe(true);
     expect(run.state.record.bosses).toEqual(['widow']);
   });
@@ -341,7 +341,7 @@ describe('dossier bosses', () => {
     for (let i = 0; i < 3000; i++) {
       const item = rollItem(rng, i, 5, 0.3, true);
       expect(item.unique).toBeUndefined();
-      expect(['monocle', 'sled']).not.toContain(item.gadget);
+      expect(['monocle', 'sled']).not.toContain(item.mod);
     }
   });
 });

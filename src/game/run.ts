@@ -5,7 +5,7 @@
 import { BOSS_OF, canPlace, CARDS, countAround, crossCourse, markDoubleBlacks, newTiles, ROUTE_OF, type CardId, type Tiles } from './cards';
 import { DT, HAND_SIZE, INVENTORY_SIZE, MAP_W, MAX_ENEMIES_PER_TILE } from './constants';
 import { difficultyMods, ENEMIES, isBoss, levelScale, type BossKind, type Enemy, type EnemyKind } from './enemies';
-import { rollGadget, rollItem, STARTER_GUN, uniqueReward, type Item, type Slot } from './items';
+import { rollGadget, rollItem, STARTER_GUN, uniqueReward, type GearUnlocks, type Item, type Slot } from './items';
 import {
   cell,
   dirOf,
@@ -21,9 +21,9 @@ import {
   type Route,
 } from './map';
 import { hashSeed, Rng, type RngState } from './rng';
-import { computeStats, hasGadget, NO_BONUSES, powderHeal, STANCES, type Equipment, type LodgeBonuses, type Stance, type Stats } from './stats';
+import { computeStats, hasMod, NO_BONUSES, powderHeal, STANCES, type Equipment, type LodgeBonuses, type Stance, type Stats } from './stats';
 
-export const RUN_VERSION = 5;
+export const RUN_VERSION = 6;
 
 export type RunStatus = 'riding' | 'lodge' | 'won' | 'retreated' | 'bailed' | 'wiped';
 export type WeatherKind = 'whiteout' | 'night' | 'bluebird' | 'blizzard';
@@ -84,7 +84,7 @@ export interface LapHand {
 }
 
 /** Something for sale in the shop beside the hand. */
-export type ShopOffer = { kind: 'card'; card: CardId; price: number };
+export type ShopOffer = { kind: 'card'; card: CardId; price: number } | { kind: 'gear'; item: Item; price: number };
 
 /** The shop: three offers that reroll whenever you buy one, or pay to reroll. */
 export const SHOP = {
@@ -95,6 +95,9 @@ export const SHOP = {
   rerollStep: 5,
   /** Cards dealt into your hand at the start of an expedition. */
   startingHand: 4,
+  /** Chance the last offer is a piece of gear instead of a card, and its base price by rarity. */
+  gearChance: 0.35,
+  gearPrice: [45, 90, 150],
 };
 
 export interface Payout {
@@ -115,7 +118,7 @@ export interface RunState {
   tiles: Tiles;
   /** Lifts and chutes you've built, in the order you built them, with their junction switches. */
   routes: Route[];
-  hero: { ride: Ride; hp: number; stance: Stance; cooldown: number; airborne: boolean };
+  hero: { ride: Ride; hp: number; stance: Stance; cooldown: number; airborne: boolean; shots: number; saved: boolean };
   enemies: Enemy[];
   nextId: number;
   hand: CardId[];
@@ -152,7 +155,7 @@ export interface RunState {
   cash: number;
   intel: number;
   scrap: number;
-  record: { kills: number; bestLap: number; placed: number; items: number; descents: number; bosses: BossKind[]; bought: number };
+  record: { kills: number; bestLap: number; placed: number; items: number; descents: number; bosses: BossKind[]; bought: number; found: string[] };
   status: RunStatus;
   payout: Payout | null;
 }
@@ -189,7 +192,8 @@ export type RunEvent =
   | { type: 'planted'; x: number; y: number }
   | { type: 'enemyHeal'; x: number; y: number; amount: number }
   | { type: 'lap'; lap: number; chips: number; mult: number; points: number; kills: number; bounty: number; lines: HandLine[]; lapTime: number; descents: number }
-  | { type: 'bought'; card: CardId; price: number }
+  | { type: 'bought'; name: string; price: number }
+  | { type: 'saved' }
   | { type: 'reroll'; price: number }
   | { type: 'wave'; lap: number; descent: number; count: number; chained: boolean }
   | { type: 'boss' }
@@ -314,7 +318,7 @@ export class Run {
       rng: hashSeed(`run:${options.seed}`),
       tiles: newTiles(),
       routes: (options.routes ?? []).map((r) => ({ ...r, cells: r.cells ? [...r.cells] : undefined })),
-      hero: { ride: { at: LODGE, to: 1, f: 0 }, hp: 0, stance: 'cruise', cooldown: 0, airborne: false },
+      hero: { ride: { at: LODGE, to: 1, f: 0 }, hp: 0, stance: 'cruise', cooldown: 0, airborne: false, shots: 0, saved: false },
       enemies: [],
       nextId: 1,
       hand: [],
@@ -342,7 +346,7 @@ export class Run {
       cash: 0,
       intel: 0,
       scrap: 0,
-      record: { kills: 0, bestLap: 0, placed: 0, items: 0, descents: 0, bosses: [], bought: 0 },
+      record: { kills: 0, bestLap: 0, placed: 0, items: 0, descents: 0, bosses: [], bought: 0, found: [] },
       status: 'riding',
       payout: null,
     };
@@ -441,7 +445,14 @@ export class Run {
     this.heal();
     this.abilities();
     this.combat();
-    if (st.status === 'riding' && st.hero.hp <= 0) this.end('wiped');
+    if (st.status === 'riding' && st.hero.hp <= 0) {
+      // An avalanche airbag saves you once an expedition.
+      if (hasMod(st.equipment, 'beacon') && !st.hero.saved) {
+        st.hero.saved = true;
+        st.hero.hp = 1;
+        this.events.push({ type: 'saved' });
+      } else this.end('wiped');
+    }
   }
 
   private apply(c: Command): void {
@@ -544,12 +555,27 @@ export class Run {
 
   /** What a card costs in the shop this lap. */
   price(card: CardId): number {
-    const hamlets = Math.min(4, this.state.tiles.filter((t) => t?.card === 'hamlet').length);
-    return Math.round(CARDS[card].cost * (1 + SHOP.lapScale * (this.state.lap - 1)) * (1 - TERRAIN.hamletDiscount * hamlets));
+    return this.cost(CARDS[card].cost);
+  }
+
+  /** A base price at this lap, after hamlets and coupons. */
+  private cost(base: number): number {
+    const st = this.state;
+    const hamlets = Math.min(4, st.tiles.filter((t) => t?.card === 'hamlet').length);
+    const coupon = hasMod(st.equipment, 'coupon') ? 0.8 : 1;
+    return Math.round(base * (1 + SHOP.lapScale * (st.lap - 1)) * (1 - TERRAIN.hamletDiscount * hamlets) * coupon);
   }
 
   rerollPrice(): number {
-    return SHOP.rerollBase + SHOP.rerollStep * this.state.rerolls;
+    const st = this.state;
+    if (st.rerolls === 0 && hasMod(st.equipment, 'rabbitFoot')) return 0;
+    return SHOP.rerollBase + SHOP.rerollStep * st.rerolls;
+  }
+
+  /** Which unlockable gear can turn up. */
+  private unlocks(): GearUnlocks {
+    const b = this.state.bonuses;
+    return { armory: b.armory, rental: b.rental, spyHq: b.gadgetDrops };
   }
 
   /** Three fresh offers from your deck, no two alike while the deck allows. */
@@ -558,7 +584,12 @@ export class Run {
     const pool = st.deck.filter((id) => CARDS[id].weight > 0);
     const offers: ShopOffer[] = [];
     for (let k = 0; k < SHOP.size && pool.length; k++) {
-      const fresh = pool.filter((id) => !offers.some((o) => o.card === id));
+      if (k === SHOP.size - 1 && this.rng.chance(SHOP.gearChance)) {
+        const item = rollItem(this.rng, st.nextId++, st.descent, st.bonuses.rarityBoost, st.bonuses.gadgetDrops, this.unlocks());
+        offers.push({ kind: 'gear', item, price: this.cost(SHOP.gearPrice[item.rarity]) });
+        continue;
+      }
+      const fresh = pool.filter((id) => !offers.some((o) => o.kind === 'card' && o.card === id));
       const card = this.pickCard(fresh.length ? fresh : pool);
       offers.push({ kind: 'card', card, price: this.price(card) });
     }
@@ -571,8 +602,9 @@ export class Run {
     if (!offer || st.points < offer.price) return;
     st.points -= offer.price;
     st.record.bought++;
-    this.addToHand(offer.card);
-    this.events.push({ type: 'bought', card: offer.card, price: offer.price });
+    if (offer.kind === 'card') this.addToHand(offer.card);
+    else this.addItem(offer.item);
+    this.events.push({ type: 'bought', name: offer.kind === 'card' ? CARDS[offer.card].name : offer.item.name, price: offer.price });
     this.rollShop();
   }
 
@@ -708,6 +740,18 @@ export class Run {
     this.events.push({ type: 'dossier', card: DOSSIER_FOR[boss], boss });
   }
 
+  /** Into the pack; a full pack scraps its oldest item. */
+  private addItem(item: Item): void {
+    const st = this.state;
+    st.inventory.push(item);
+    st.record.items++;
+    if (!st.record.found.includes(item.def)) st.record.found.push(item.def);
+    if (st.inventory.length > INVENTORY_SIZE) {
+      const old = st.inventory.shift()!;
+      st.scrap += 1 + old.rarity * 2;
+    }
+  }
+
   private equip(index: number): void {
     const st = this.state;
     const item = st.inventory[index];
@@ -834,6 +878,11 @@ export class Run {
     const rng = this.rng;
     const before = st.enemies.length;
     if (newLap) {
+      if (hasMod(st.equipment, 'flask') && st.lap > 1) {
+        const amount = Math.round(this.stats.maxHp * 0.2);
+        st.hero.hp = Math.min(this.stats.maxHp, st.hero.hp + amount);
+        this.events.push({ type: 'heal', amount, x: this.map.nodes[LODGE].x + 0.5, y: this.map.nodes[LODGE].y + 0.5 });
+      }
       if (st.weather && --st.weather.laps <= 0) {
         st.weather = null;
         this.events.push({ type: 'weather', kind: null });
@@ -967,7 +1016,7 @@ export class Run {
     if (p.kind === 'chute') return 3;
     const dir = dirOf(this.map, i, this.choose(i));
     // Downhill is fast, traverses slower, and climbing back uphill on a path is a slow skate.
-    return dir === 'down' ? 2.4 : dir === 'up' ? ROUTE_TUNING.climb : 1.8;
+    return dir === 'down' ? 2.4 : dir === 'up' && !hasMod(this.state.equipment, 'skate') ? ROUTE_TUNING.climb : 1.8;
   }
 
   /** Returns true when the skier just reached the lodge. */
@@ -979,11 +1028,22 @@ export class Run {
     const p = this.map.nodes[i];
     const t = st.tiles[cell(p.x, p.y)];
     const onLift = p.kind === 'lift';
-    const tileMod =
-      t?.card === 'moguls' ? 0.7 : t?.card === 'ice' ? 1.6 : t?.card === 'corduroy' ? TERRAIN.corduroySpeed : t?.card === 'powderStash' ? TERRAIN.stashSpeed : 1;
+    const deep = (t?.card === 'moguls' || t?.card === 'powderStash') && hasMod(st.equipment, 'mogulMaster');
+    const tileMod = deep
+      ? 1
+      : t?.card === 'moguls'
+        ? 0.7
+        : t?.card === 'ice'
+          ? 1.6
+          : t?.card === 'corduroy'
+            ? TERRAIN.corduroySpeed
+            : t?.card === 'powderStash'
+              ? TERRAIN.stashSpeed
+              : 1;
+    const stanceSpeed = hero.stance === 'plow' && hasMod(st.equipment, 'plowSpeed') ? 0.75 : STANCES[hero.stance].speed;
     const w = st.weather?.kind;
     const weather = w === 'blizzard' ? WEATHER.blizzardSpeed : w === 'bluebird' ? WEATHER.bluebirdSpeed : 1;
-    const speed = this.baseSpeed(i) * tileMod * (onLift ? 1 : STANCES[hero.stance].speed * this.stats.speed * (1 + st.wax) * weather);
+    const speed = this.baseSpeed(i) * tileMod * (onLift ? 1 : stanceSpeed * this.stats.speed * (1 + st.wax) * weather);
     const before = ride.f;
     ride.f += speed * DT;
     if (before < 0.5 && ride.f >= 0.5) this.enterTile(ride.to);
@@ -1005,16 +1065,16 @@ export class Run {
       if (ride.f >= 0.5) this.enterTile(ride.to);
     }
     if (isPiste(this.map, i) && hero.stance === 'tuck') {
-      const m = STANCES.tuck.mult * DT * (hasGadget(st.equipment, 'speedDemon') ? 2 : 1);
+      const m = STANCES.tuck.mult * DT * (hasMod(st.equipment, 'speedDemon') ? 2 : 1);
       st.lapHand.mult += m;
       this.line('Tucking', 0, m, false);
     }
     return false;
   }
 
-  /** Kickers and rails beside a Wind Ridge pay double. */
+  /** Kickers and rails pay double beside a Wind Ridge, and double again on twin tips. */
   private windBonus(x: number, y: number): number {
-    return countAround(this.state.tiles, x, y, 'windRidge') > 0 ? 2 : 1;
+    return (countAround(this.state.tiles, x, y, 'windRidge') > 0 ? 2 : 1) * (hasMod(this.state.equipment, 'twinTips') ? 2 : 1);
   }
 
   /** How many tiles holding `card` are within a tile of the skier's tile. */
@@ -1028,11 +1088,12 @@ export class Run {
     st.descent++;
     st.lapDescents++;
     st.record.descents++;
-    const mult = ROUTE_TUNING.chainMult * (hasGadget(st.equipment, 'sled') ? 2 : 1);
+    const mult = ROUTE_TUNING.chainMult * (hasMod(st.equipment, 'sled') ? 2 : 1);
     st.lapHand.mult += mult;
     this.line('Chained descents', 0, mult);
     const me = this.heroPos();
     this.events.push({ type: 'chain', descents: st.lapDescents, x: me.x, y: me.y });
+    if (hasMod(st.equipment, 'grapple')) st.hero.hp = Math.min(this.stats.maxHp, st.hero.hp + this.stats.maxHp * 0.15);
     // Another descent, another round from every enemy card, a level tougher.
     this.startDescent(false);
   }
@@ -1055,7 +1116,7 @@ export class Run {
       } else {
         const damage = Math.max(1, Math.round(SPECIALISTS.mineDamage * levelScale(st.descent, st.difficulty).damage) - this.stats.defense);
         st.hero.hp -= damage;
-        if (!hasGadget(st.equipment, 'insurance')) st.lapHand.combo = 0;
+        if (!hasMod(st.equipment, 'insurance')) st.lapHand.combo = 0;
         this.events.push({ type: 'mine', x: cx, y: cy, hit: true, damage });
         this.events.push({ type: 'heroHit', damage });
       }
@@ -1063,8 +1124,9 @@ export class Run {
     if (isPiste(this.map, i)) {
       // Base chips for the run itself, like a Balatro hand's base: one a tile, two in a chute.
       const steep = p.kind === 'chute';
-      this.earn(steep ? 2 : 1);
-      this.line('The run', steep ? 2 : 1, 0, false);
+      const run = (steep ? 2 : 1) + (hasMod(st.equipment, 'powderSkis') ? 1 : 0);
+      this.earn(run);
+      this.line('The run', run, 0, false);
       if (steep) {
         st.lapHand.mult += ROUTE_TUNING.steepMult;
         this.line('Steep', 0, ROUTE_TUNING.steepMult, false);
@@ -1113,7 +1175,7 @@ export class Run {
       }
       const pines = countAround(st.tiles, p.x, p.y, 'pines');
       if (pines) {
-        const bonus = hasGadget(st.equipment, 'treeHugger') ? 0.05 * pines : 0;
+        const bonus = hasMod(st.equipment, 'treeHugger') ? 0.05 * pines : 0;
         st.permanentMult += bonus;
         this.addChips('Graze', 4 * pines * (st.weather?.kind === 'whiteout' ? WEATHER.whiteoutChips : 1), bonus, cx, cy);
       }
@@ -1192,7 +1254,7 @@ export class Run {
 
   private end(status: RunStatus): void {
     const st = this.state;
-    const bail = hasGadget(st.equipment, 'sled') ? 0.8 : 0.6;
+    const bail = hasMod(st.equipment, 'sled') ? 0.8 : 0.6;
     const fraction = status === 'retreated' || status === 'won' ? 1 : status === 'bailed' ? bail : 0.3;
     // Beating the Baron mid-lap banks the lap's bounties too; bailing or wiping out loses them.
     if (status === 'won') {
@@ -1226,7 +1288,7 @@ export class Run {
   private earn(chips: number): void {
     const st = this.state;
     if (st.weather?.kind === 'blizzard') chips *= WEATHER.blizzardChips;
-    const pts = chips * st.lapHand.mult;
+    const pts = chips * st.lapHand.mult * (hasMod(st.equipment, 'style') ? 1.15 : 1);
     st.lapHand.chips += chips;
     st.points += pts;
     st.lapPoints += pts;
@@ -1246,7 +1308,7 @@ export class Run {
     const st = this.state;
     const p = this.map.nodes[this.heroNode()];
     let rate = this.stats.regen + TERRAIN.aidRegen * this.near('firstAid');
-    if (p.kind === 'lift') rate += 2 * (hasGadget(st.equipment, 'liftPass') ? 3 : 1);
+    if (p.kind === 'lift') rate += 2 * (hasMod(st.equipment, 'liftPass') ? 3 : 1);
     st.hero.hp = Math.min(this.stats.maxHp, st.hero.hp + rate * DT);
   }
 
@@ -1304,14 +1366,27 @@ export class Run {
     const hidden = st.tiles[cell(tile.x, tile.y)]?.card === 'tunnel';
     const bluebird = st.weather?.kind === 'bluebird';
     const blizzard = st.weather?.kind === 'blizzard';
+    const has = (m: Parameters<typeof hasMod>[1]) => hasMod(st.equipment, m);
     const sight = whiteout ? WEATHER.whiteoutRange : 1;
+    const mySight = has('whiteoutLens') ? 1 : sight;
     const enemySight = sight * (bluebird ? WEATHER.bluebirdSight : 1);
-    const terrainAim = (onIce ? 0.6 : 1) * (tile.kind === 'chute' ? ROUTE_TUNING.chuteAim : 1) * (night ? WEATHER.nightAim : 1) * (bluebird ? WEATHER.bluebirdAim : 1);
+    const terrainAim =
+      (onIce && !has('iceEdge') ? 0.6 : 1) *
+      (tile.kind === 'chute' ? ROUTE_TUNING.chuteAim : 1) *
+      (night && !has('nightVision') ? WEATHER.nightAim : 1) *
+      (bluebird ? WEATHER.bluebirdAim : 1);
+    const stanceAim = hero.stance === 'tuck' && has('steady') ? 1 : stance.accuracy;
     const jammers = st.tiles.flatMap((t, c) => (t?.card === 'jammer' ? [{ x: (c % MAP_W) + 0.5, y: Math.floor(c / MAP_W) + 0.5 }] : []));
 
-    // Chasers ride the mountain too, and follow the same switches.
+    // Stuns and slows from your gun wear off.
     for (const e of st.enemies) {
-      if (!e.ride) continue;
+      if (e.stun) e.stun = Math.max(0, e.stun - DT);
+      if (e.slow) e.slow = Math.max(0, e.slow - DT);
+    }
+
+    // Chasers ride the mountain too, and follow the same switches (unless they're pinned).
+    for (const e of st.enemies) {
+      if (!e.ride || e.stun) continue;
       const r = e.ride;
       r.f += ENEMIES[e.kind].speed * DT * (blizzard ? WEATHER.blizzardSpeed : 1);
       while (r.f >= 1) {
@@ -1325,48 +1400,41 @@ export class Run {
     }
 
     // The skier fires at the nearest enemy in range, on the move.
-    const airhead = hasGadget(st.equipment, 'airhead');
+    const airhead = hasMod(st.equipment, 'airhead');
     hero.cooldown -= DT;
     if ((!hero.airborne || airhead) && !hidden && hero.cooldown <= 0) {
-      let target: Enemy | null = null;
-      let best = (stats.range + TERRAIN.towerRange * this.near('watchtower')) * sight;
-      for (const e of st.enemies) {
-        const d = Math.hypot(e.x - me.x, e.y - me.y);
-        if (d <= best) {
-          best = d;
-          target = e;
-        }
-      }
-      if (target) {
-        const plowReload = hero.stance === 'plow' && hasGadget(st.equipment, 'plowReload');
+      const reach = (stats.range + TERRAIN.towerRange * this.near('watchtower')) * mySight;
+      const inRange = st.enemies
+        .map((e) => ({ e, d: Math.hypot(e.x - me.x, e.y - me.y) }))
+        .filter(({ d }) => d <= reach)
+        .sort((a, b) => a.d - b.d);
+      if (inRange.length) {
+        const plowReload = hero.stance === 'plow' && has('plowReload');
         hero.cooldown = 1 / (stats.fireRate * (plowReload ? 1.6 : 1) * (1 + TERRAIN.ammoRate * this.near('ammoDump')));
-        const steady = onLift ? (hasGadget(st.equipment, 'liftPass') ? 1.5 : 1.2) : 1;
-        const chance = stats.accuracy * stance.accuracy * terrainAim * steady - ENEMIES[target.kind].evasion;
-        const hit = rng.next() < Math.min(0.97, Math.max(0.05, chance));
-        const monocle = hasGadget(st.equipment, 'monocle');
-        const crit = hit && (rng.next() < stats.crit + (monocle ? 0.15 : 0) || (hero.airborne && airhead));
-        const critMult = (hero.airborne && airhead) || monocle ? 3 : 2;
-        const damage = hit ? Math.round(stats.damage * (crit ? critMult : 1)) : 0;
-        this.events.push({ type: 'shot', fromX: me.x, fromY: me.y, toX: target.x, toY: target.y, hit, damage, crit, target: target.id });
-        if (hit) this.damage(target, damage);
+        hero.shots++;
+        // A railgun's shot carries on into the next nearest enemy.
+        const targets = has('pierce') ? inRange.slice(0, 2) : inRange.slice(0, 1);
+        for (const { e: target, d } of targets) this.shoot(target, d, stanceAim * terrainAim * (onLift ? (has('liftPass') ? 1.5 : 1.2) : 1));
       }
     }
     st.enemies = st.enemies.filter((e) => e.hp > 0);
     if (st.status !== 'riding') return;
 
     // Everything in range fires back. Speed is armour: tucking dodges more.
+    const camo = has('camo');
+    const spiked = has('spiked');
     const evasion = Math.min(0.75, Math.max(0, stats.evasion + stance.evasion));
-    const insured = hasGadget(st.equipment, 'insurance');
+    const insured = hasMod(st.equipment, 'insurance');
     for (const e of st.enemies) {
       if (e.hp <= 0) continue;
       const def = ENEMIES[e.kind];
-      e.cooldown -= DT * (blizzard ? WEATHER.blizzardFire : 1);
+      e.cooldown -= DT * (blizzard ? WEATHER.blizzardFire : 1) * (e.slow ? 0.5 : 1);
       const d = Math.hypot(e.x - me.x, e.y - me.y);
       if (d > def.range * enemySight) {
         e.cooldown = Math.max(e.cooldown, def.interval * 0.4);
         continue;
       }
-      if (e.cooldown > 0 || hidden) continue;
+      if (e.cooldown > 0 || hidden || e.stun) continue;
       e.cooldown = def.interval * rng.range(0.9, 1.1);
       const scale = levelScale(e.level, st.difficulty);
       const base = { type: 'enemyShot' as const, enemy: e.id, kind: e.kind, fromX: e.x, fromY: e.y, toX: me.x, toY: me.y };
@@ -1375,15 +1443,51 @@ export class Run {
         continue;
       }
       const jammed = jammers.some((j) => Math.hypot(j.x - e.x, j.y - e.y) <= TERRAIN.jammerReach) ? TERRAIN.jammerAim : 1;
-      const hit = rng.next() < def.accuracy * (1 - evasion) * (night ? WEATHER.nightEnemyAim : 1) * jammed;
+      const hidden2 = camo && d > 1.5 ? 0.75 : 1;
+      const hit = rng.next() < def.accuracy * (1 - evasion) * (night ? WEATHER.nightEnemyAim : 1) * jammed * hidden2;
       const damage = hit ? Math.max(1, Math.round(def.damage * scale.damage) - stats.defense - stance.defense) : 0;
       this.events.push({ ...base, hit, damage, air: false });
       if (!hit) continue;
       hero.hp -= damage;
       this.events.push({ type: 'heroHit', damage });
       if (!insured) st.lapHand.combo = 0;
+      if (spiked && d <= 1) this.damage(e, 3);
       if (hero.hp <= 0) return;
     }
+    st.enemies = st.enemies.filter((e) => e.hp > 0);
+  }
+
+  /** One shot at `target`, `d` tiles away, with your aim multiplied by `aim`. */
+  private shoot(target: Enemy, d: number, aim: number): void {
+    const st = this.state;
+    const hero = st.hero;
+    const stats = this.stats;
+    const rng = this.rng;
+    const me = this.heroPos();
+    const has = (m: Parameters<typeof hasMod>[1]) => hasMod(st.equipment, m);
+    const airhead = has('airhead');
+    const chance = stats.accuracy * aim - ENEMIES[target.kind].evasion;
+    const hit = rng.next() < Math.min(0.97, Math.max(0.05, chance));
+    const monocle = has('monocle');
+    const golden = has('goldenGun') && hero.shots % 4 === 0;
+    const crit = hit && (golden || rng.next() < stats.crit + (monocle ? 0.15 : 0) || (hero.airborne && airhead));
+    const critMult = (hero.airborne && airhead) || monocle ? 3 : 2;
+    let mult = crit ? critMult : 1;
+    if (has('longShot') && d > 1.8) mult *= 1.5;
+    if (has('thermal') && target.hp >= target.maxHp) mult *= 1.25;
+    const damage = hit ? Math.round(stats.damage * mult) : 0;
+    this.events.push({ type: 'shot', fromX: me.x, fromY: me.y, toX: target.x, toY: target.y, hit, damage, crit, target: target.id });
+    if (!hit) return;
+    if (has('stun')) target.stun = Math.max(target.stun ?? 0, 0.5);
+    if (has('harpoon')) target.stun = Math.max(target.stun ?? 0, 1.2);
+    if (has('tranq')) target.slow = 3;
+    if (has('leech')) hero.hp = Math.min(stats.maxHp, hero.hp + 2);
+    // A shotgun's spray catches anything standing close to the target.
+    if (has('spread'))
+      for (const other of st.enemies) {
+        if (other !== target && other.hp > 0 && Math.hypot(other.x - target.x, other.y - target.y) <= 0.7) this.damage(other, Math.round(damage * 0.6));
+      }
+    this.damage(target, damage);
   }
 
   private damage(e: Enemy, amount: number): void {
@@ -1396,7 +1500,8 @@ export class Run {
     const chips = Math.round(def.chips * scale.chips * (st.weather?.kind === 'whiteout' ? WEATHER.whiteoutChips : 1));
     st.record.kills++;
     st.lapKills++;
-    st.lapBounty += Math.round(def.bounty * scale.chips * difficultyMods(st.difficulty).payout);
+    const bountyMod = (hasMod(st.equipment, 'bounty') ? 1.5 : 1) * (hasMod(st.equipment, 'piggyBank') ? 1.15 : 1);
+    st.lapBounty += Math.round(def.bounty * scale.chips * difficultyMods(st.difficulty).payout * bountyMod);
     st.lapHand.combo++;
     this.events.push({ type: 'kill', enemy: e.id, kind: e.kind, x: e.x, y: e.y, chips });
     this.addChips(KILL_LINES[e.kind], chips, 0, e.x, e.y);
@@ -1407,21 +1512,18 @@ export class Run {
 
     // Loot, Loop Hero style: cards, gear and resources.
     const loot = st.weather?.kind === 'night' ? WEATHER.nightLoot : 1;
-    if (this.rng.chance(Math.min(1, def.cardChance * KILL_CARDS * loot))) {
+    if (this.rng.chance(Math.min(1, def.cardChance * KILL_CARDS * loot * (hasMod(st.equipment, 'lucky') ? 1.15 : 1)))) {
       this.drawCard();
       this.events.push({ type: 'loot', what: 'card', label: 'Card', x: e.x, y: e.y });
     }
-    if (this.rng.chance(Math.min(1, def.itemChance * loot))) {
+    const lucky = hasMod(st.equipment, 'lucky') ? 1.15 : 1;
+    const magnet = hasMod(st.equipment, 'magnet') ? 1.3 : 1;
+    if (this.rng.chance(Math.min(1, def.itemChance * loot * lucky * magnet))) {
       const item =
         e.kind === 'baron'
-          ? rollGadget(this.rng, st.nextId++, st.descent, 2)
-          : rollItem(this.rng, st.nextId++, e.level, st.bonuses.rarityBoost, st.bonuses.gadgetDrops);
-      st.inventory.push(item);
-      st.record.items++;
-      if (st.inventory.length > INVENTORY_SIZE) {
-        const old = st.inventory.shift()!;
-        st.scrap += 1 + old.rarity * 2;
-      }
+          ? rollGadget(this.rng, st.nextId++, st.descent, 2, this.unlocks())
+          : rollItem(this.rng, st.nextId++, e.level, st.bonuses.rarityBoost, st.bonuses.gadgetDrops, this.unlocks());
+      this.addItem(item);
       this.events.push({ type: 'loot', what: 'item', label: item.name, x: e.x, y: e.y });
     }
     const intel = def.intel >= 1 ? def.intel : this.rng.chance(def.intel) ? 1 : 0;
@@ -1437,17 +1539,13 @@ export class Run {
 
     // Intel fragments, from the second lap on: three make a dossier.
     const fragmentChance = FRAGMENT_CHANCE[e.kind] ?? 0;
-    if (fragmentChance > 0 && st.lap >= FRAGMENT_LAP && this.rng.chance(fragmentChance)) this.addFragment(e.x, e.y);
+    const briefcase = hasMod(st.equipment, 'briefcase') ? 1.5 : 1;
+    if (fragmentChance > 0 && st.lap >= FRAGMENT_LAP && this.rng.chance(Math.min(1, fragmentChance * briefcase))) this.addFragment(e.x, e.y);
 
     // A dossier boss pays a bounty and drops its one-of-a-kind reward.
     if (e.kind === 'widow' || e.kind === 'yetiKing' || e.kind === 'kickback') {
       const reward = uniqueReward(e.kind, st.nextId++);
-      st.inventory.push(reward);
-      st.record.items++;
-      if (st.inventory.length > INVENTORY_SIZE) {
-        const old = st.inventory.shift()!;
-        st.scrap += 1 + old.rarity * 2;
-      }
+      this.addItem(reward);
       st.record.bosses.push(e.kind);
       st.cash += BOSS_BOUNTY;
       this.events.push({ type: 'loot', what: 'item', label: reward.name, x: e.x, y: e.y });
@@ -1463,7 +1561,7 @@ export class Run {
         if (other !== e && other.hp > 0 && Math.hypot(other.x - e.x, other.y - e.y) <= 1.2) this.damage(other, TERRAIN.drumsDamage);
       }
     }
-    if (hasGadget(st.equipment, 'snowballs')) {
+    if (hasMod(st.equipment, 'snowballs')) {
       for (const other of st.enemies) {
         if (other !== e && other.hp > 0 && Math.hypot(other.x - e.x, other.y - e.y) <= 1) this.damage(other, 8);
       }

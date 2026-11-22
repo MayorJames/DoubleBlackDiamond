@@ -750,8 +750,8 @@ export class LodgeScene {
     if (this.fit === 'cover') {
       // The sky above the scene: its top colour, the same weather, and big slow flakes.
       const c = this.ctx;
-      const night = this.weather === 'night';
-      c.fillStyle = night ? '#24242c' : PIXELS.s;
+      // The scene's own sky colour at the top, after the weather's tint.
+      c.fillStyle = this.weather === 'night' ? '#6d6d77' : this.weather === 'whiteout' || this.weather === 'blizzard' ? '#ececec' : PIXELS.s;
       c.fillRect(0, 0, this.canvas.width, Math.max(0, this.oy) + 1);
       if (this.ox > 0) {
         c.fillRect(0, 0, this.ox, this.canvas.height);
