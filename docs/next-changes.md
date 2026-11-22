@@ -19,6 +19,8 @@ Keep the loop-building heart, but make every lap an active economy:
   100 guns and pieces of gear.
 - **Time is measured in laps,** not a ten-second clock.
 - **The interface stays out of the way** while you place cards.
+- **The game reads in a logical order:** a start page, a rules page, and a play page with a view for
+  each mechanic. The ski town is the showcase for detailed pixel art and changes with what you buy.
 
 ## The changes
 
@@ -139,6 +141,41 @@ Keep the loop-building heart, but make every lap an active economy:
   - Weather lasts N laps; powder heals once a lap.
   - Pairs with item 1. Spawns stay seeded, so runs remain reproducible.
 
+### 10. Reorganise the game into clear pages and menus
+
+- **Request:** put the game's pages in a more logical order:
+  - a start page;
+  - a rules page;
+  - a play page, with a menu or view for each mechanic: one for the buildable mountain, one for ski
+    loops, and one for the ski town.
+
+  These are good places to show more detailed pixel art, especially a dynamic ski town that changes
+  with what you buy.
+- **Now:** there are two screens.
+  - The lodge screen mixes the title, the lodge panorama, the stash, expedition setup (rating, seed,
+    deck), buildings and the how-to list on one scrolling page.
+  - The run screen holds the map, hand, side panel and overlays.
+- **Proposal:**
+  - **Start page:** the title over a full-screen animated pixel scene of the mountain and town, with
+    Play, Rules and Settings (sound, card tips from item 8).
+  - **Rules page:** an illustrated guide, one panel per mechanic (skiing and stance, cards and
+    placement, routes and junctions, scoring, bosses, weather), each with its own small pixel vignette
+    rather than a bullet list.
+  - **Play page,** with a menu to switch between three views:
+    - **Ski town:** the hub, replacing today's lodge panorama and building cards. A larger, more
+      detailed town that grows and changes with what you buy: new buildings, upgrades that visibly
+      change existing ones, townsfolk and skiers walking about, and time of day or weather echoing the
+      last run. Building, unlocks and the deck live here.
+    - **The mountain:** the buildable mountain from item 3. Place and arrange course tiles, see every
+      loop and path, and pick the run's setup (seed, difficulty) before heading out.
+    - **Ski loops:** the run itself, keeping the low-res map, with the card shop from item 2 and the
+      hand.
+  - Showcase detailed pixel art on the start page, rules vignettes and the ski town. Keep the run map
+    chunky and readable.
+- **To decide:**
+  - Can you open the town or mountain views during a run (paused), or only between runs?
+  - Should the start page carry over the latest town state, so it reflects your progress?
+
 ## Suggested order
 
 1. **Interface fix (item 8).** Small, and it unblocks playtesting.
@@ -146,4 +183,7 @@ Keep the loop-building heart, but make every lap an active economy:
 3. **Card points and the shop (item 2), with fewer chairlifts (item 4).** This is the new economy.
 4. **Enemy types (item 6).** Six or more types with their own cards and art.
 5. **Course tiles replacing the difficulty picker (item 3).** This is the largest structural change.
-6. **Content scale-up (items 5 and 7).** About 50 cards and 50 to 100 items, in batches.
+6. **Pages and views (item 10).** A start page, a rules page, and play views for the town, the
+   mountain and the ski loops. The skeleton can come early (after step 1), and the views fill in as
+   the mountain builder and the dynamic town arrive.
+7. **Content scale-up (items 5 and 7).** About 50 cards and 50 to 100 items, in batches.
