@@ -11,6 +11,7 @@ import { STANCES, type Stance } from '../game/stats';
 import { cardArtUrl } from '../render/art/cardArt';
 import type { MapRenderer } from '../render/mapRenderer';
 import { spriteUrl, type SpriteName } from '../render/sprites';
+import type { Settings } from '../app/settings';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => {
   const el = document.getElementById(id);
@@ -117,6 +118,8 @@ export interface RunUiHooks {
   equip: (index: number) => void;
   salvage: (index: number) => void;
   bail: () => void;
+  /** The player changed a preference (card tips on or off). */
+  settingsChanged: () => void;
 }
 
 export class RunUi {
@@ -129,6 +132,8 @@ export class RunUi {
 
   private readonly handEl = $('hand');
   private readonly cardTip = $('card-tip');
+  private readonly placeHint = $('place-hint');
+  private readonly tipsToggle = $<HTMLButtonElement>('tips-toggle');
   private readonly itemTip = $('item-tip');
   private readonly fxEl = $('map-fx');
   private readonly mapWrap = $('map-wrap');
@@ -136,7 +141,19 @@ export class RunUi {
   constructor(
     hooks: RunUiHooks,
     private readonly renderer: MapRenderer,
+    private readonly settings: Settings,
   ) {
+    // Card tips can be switched off; placing always shows a slim hint along the top of the map
+    // instead, with a button to cancel, so the bottom row stays visible.
+    this.tipsToggle.addEventListener('click', () => {
+      settings.cardTips = !settings.cardTips;
+      this.renderTipsToggle();
+      hooks.settingsChanged();
+    });
+    this.renderTipsToggle();
+    this.placeHint.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('[data-cancel]')) hooks.selectCard(null);
+    });
     document.querySelectorAll<HTMLButtonElement>('.stance button').forEach((b) =>
       b.addEventListener('click', () => hooks.setStance(b.dataset.stance as Stance)),
     );
@@ -212,7 +229,7 @@ export class RunUi {
     document.querySelectorAll<HTMLButtonElement>('.tb.speed button').forEach((b) =>
       b.classList.toggle('on', Number(b.dataset.speed) === speed),
     );
-    $('paused-tag').classList.toggle('hidden', speed !== 0 || st.status !== 'riding');
+    $('paused-tag').classList.toggle('hidden', speed !== 0 || st.status !== 'riding' || this.selected !== null);
 
     const hp = Math.max(0, st.hero.hp);
     this.text('hp-text', `${Math.ceil(hp)}/${stats.maxHp}`);
@@ -269,7 +286,7 @@ export class RunUi {
 
   private renderHand(run: Run): void {
     const hand = run.state.hand;
-    const key = `${hand.join(',')}|${this.selected}`;
+    const key = `${hand.join(',')}|${this.selected}|${this.settings.cardTips}`;
     if (key === this.handKey) return;
     // New cards (compared with last time) get dealt in with a flourish.
     const fresh = new Set<number>();
@@ -288,27 +305,55 @@ export class RunUi {
         b.type = 'button';
         b.className = `card ${def.kind}${i === this.selected ? ' selected' : ''}${fresh.has(i) ? ' dealt' : ''}`;
         b.dataset.index = String(i);
-        b.title = `${def.name}: ${def.text} (right-click to burn for 1 intel)`;
+        if (!this.settings.cardTips) b.title = `${def.name}: ${def.text} (right-click to burn for 1 intel)`;
         b.innerHTML = `<span class="ckind">${KIND_LABEL[def.kind]}</span><img alt="" src="${cardArt(card)}"><span class="cname">${def.name}</span>`;
         return b;
       }),
     );
   }
 
+  private renderTipsToggle(): void {
+    const on = this.settings.cardTips;
+    this.tipsToggle.textContent = on ? 'Card tips: on' : 'Card tips: off';
+    this.tipsToggle.setAttribute('aria-pressed', String(on));
+    this.tipsToggle.classList.toggle('off', !on);
+    this.handKey = '';
+  }
+
+  /**
+   * Hovering a card shows its full description above the hand (unless tips are off). Once a card
+   * is picked up for placing, the bubble goes and a one-line hint sits along the top of the map.
+   */
   private renderCardTip(run: Run): void {
-    const i = this.hoverCard ?? this.selected;
-    const card = i !== null ? run.state.hand[i] : undefined;
+    const placing = this.selected !== null ? run.state.hand[this.selected] : undefined;
+    if (placing) {
+      const def = CARDS[placing];
+      const html = `<img alt="" src="${cardArtUrl(placing, 1)}"><span><b>${def.name}</b> ${KIND_HINT[def.kind]}</span><span class="keys">Esc or right-click to cancel</span><button type="button" data-cancel aria-label="Cancel placing">×</button>`;
+      if (this.changed('placehint', html)) this.placeHint.innerHTML = html;
+      this.placeHint.classList.remove('hidden');
+    } else {
+      this.placeHint.classList.add('hidden');
+      this.last.delete('placehint');
+    }
+    const i = this.hoverCard;
+    const card = i !== null && i !== this.selected && this.settings.cardTips ? run.state.hand[i] : undefined;
     if (!card) {
       this.cardTip.classList.add('hidden');
       this.last.delete('cardtip');
       return;
     }
     const def = CARDS[card];
-    const html = `<img class="tip-art" alt="" src="${cardArtUrl(card, 3)}"><span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i>${
-      this.selected === i ? '<span class="kind">Click a dotted tile to place · Esc to cancel</span>' : '<span class="kind">Click to place · right-click to burn</span>'
-    }`;
+    const html = `<img class="tip-art" alt="" src="${cardArtUrl(card, 3)}"><span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i><span class="kind">Click to place · right-click to burn</span>`;
     if (this.changed('cardtip', html)) this.cardTip.innerHTML = html;
     this.cardTip.classList.remove('hidden');
+    // Sit over the hovered card, kept inside the hand area.
+    const el = this.handEl.querySelector<HTMLElement>(`.card[data-index="${i}"]`);
+    const wrap = this.handEl.parentElement!;
+    if (el) {
+      const w = this.cardTip.offsetWidth;
+      const centre = el.getBoundingClientRect().left + el.offsetWidth / 2 - wrap.getBoundingClientRect().left;
+      this.cardTip.style.left = `${Math.max(4, Math.min(wrap.clientWidth - w - 4, centre - w / 2))}px`;
+    }
   }
 
   private renderGear(run: Run): void {

@@ -15,6 +15,7 @@ import { LodgeUi } from '../ui/lodgeUi';
 import { Overlays } from '../ui/overlays';
 import { formatCash, RunUi } from '../ui/runUi';
 import { FixedLoop } from './loop';
+import { loadSettings, saveSettings } from './settings';
 import { loadProfile, saveProfile } from './storage';
 
 const SEED_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -38,6 +39,7 @@ function seedFromUrl(): string | null {
 
 export class App {
   private readonly profile = loadProfile();
+  private readonly settings = loadSettings();
   private run: Run | null = null;
   private readonly renderer: MapRenderer;
   private readonly runUi: RunUi;
@@ -69,8 +71,10 @@ export class App {
         equip: (i) => this.command({ type: 'equip', item: i }),
         salvage: (i) => this.command({ type: 'salvage', item: i }),
         bail: () => this.command({ type: 'bail' }),
+        settingsChanged: () => saveSettings(this.settings),
       },
       this.renderer,
+      this.settings,
     );
     this.lodgeUi = new LodgeUi({
       build: (id) => this.build(id),
