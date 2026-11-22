@@ -7,6 +7,7 @@ import { cardArtUrl } from './render/art/cardArt';
 import { sceneStill } from './render/art/lodgeScene';
 import { scaled } from './render/art/pixel';
 import { portraitUrl, type PortraitId } from './render/art/portraits';
+import { SPRITES, spriteUrl, type SpriteName } from './render/sprites';
 
 const root = document.getElementById('gallery')!;
 
@@ -30,6 +31,11 @@ const img = (src: string) => Object.assign(document.createElement('img'), { src,
 section(
   'Cards (4x)',
   CARD_IDS.map((id) => ({ label: CARDS[id].name, el: img(cardArtUrl(id, 4)) })),
+);
+
+section(
+  'Map sprites (4x)',
+  (Object.keys(SPRITES) as SpriteName[]).map((id) => ({ label: id, el: img(spriteUrl(id, 4)) })),
 );
 
 const still = (built: BuildingId[]) => scaled(sceneStill(built), 3);

@@ -284,7 +284,22 @@ export class App {
           fx.fired.set(e.enemy, 0);
           if (e.air) this.runUi.pop('AIR!', e.toX, e.toY - 0.8);
           else if (!e.hit) this.runUi.pop('miss', e.toX + 0.3, e.toY - 0.6);
-          this.sfx.enemyShot(e.kind === 'sniper' ? 20 : 60);
+          this.sfx.enemyShot(e.kind === 'sniper' ? 20 : e.kind === 'hound' ? 90 : e.kind === 'sapper' ? 35 : 60);
+          break;
+        case 'mine':
+          fx.burst(e.x * T, e.y * T, e.hit ? 26 : 8);
+          if (e.hit) {
+            this.runUi.burst('BOOM!', e.x, e.y - 0.4);
+            this.renderer.shake = Math.max(this.renderer.shake, 0.9);
+            this.sfx.yardSale();
+          } else this.runUi.pop('Mine jumped!', e.x, e.y - 1.1, 'red big');
+          break;
+        case 'planted':
+          fx.ring(e.x * T + 8, e.y * T + 8);
+          this.runUi.pop('mine!', e.x + 0.5, e.y + 0.2, 'red');
+          break;
+        case 'enemyHeal':
+          this.runUi.pop(`+${e.amount}`, e.x, e.y - 0.9, 'heal');
           break;
         case 'heroHit': {
           const me = run.heroPos();

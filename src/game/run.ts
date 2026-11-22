@@ -153,6 +153,9 @@ export type RunEvent =
   | { type: 'loot'; what: 'card' | 'item' | 'intel' | 'scrap'; label: string; x: number; y: number }
   | { type: 'heal'; amount: number; x: number; y: number }
   | { type: 'heroHit'; damage: number }
+  | { type: 'mine'; x: number; y: number; hit: boolean; damage: number }
+  | { type: 'planted'; x: number; y: number }
+  | { type: 'enemyHeal'; x: number; y: number; amount: number }
   | { type: 'lap'; lap: number; chips: number; mult: number; points: number; kills: number; bounty: number; lines: HandLine[]; lapTime: number; descents: number }
   | { type: 'bought'; card: CardId; price: number }
   | { type: 'reroll'; price: number }
@@ -178,6 +181,9 @@ const KILL_LINES: Record<EnemyKind, string> = {
   sniper: 'Snipers',
   snowmobile: 'Snowmobiles',
   yeti: 'Yetis',
+  sapper: 'Sappers',
+  medic: 'Medics',
+  hound: 'Hounds',
   baron: 'The Baron',
   widow: 'The Ice Widow',
   yetiKing: 'The Yeti King',
@@ -185,7 +191,7 @@ const KILL_LINES: Record<EnemyKind, string> = {
 };
 
 /** Chance each kind drops an intel fragment, from lap FRAGMENT_LAP on. */
-const FRAGMENT_CHANCE: Partial<Record<EnemyKind, number>> = { guard: 0.05, sniper: 0.3, snowmobile: 0.3, yeti: 1 };
+const FRAGMENT_CHANCE: Partial<Record<EnemyKind, number>> = { guard: 0.05, sniper: 0.3, snowmobile: 0.3, sapper: 0.3, medic: 0.3, hound: 0.04, yeti: 1 };
 export const FRAGMENT_LAP = 2;
 const DOSSIER_FOR: Record<BossKind, CardId> = { widow: 'dossierWidow', yetiKing: 'dossierYetiKing', kickback: 'dossierKickback' };
 export const FRAGMENTS_PER_DOSSIER = 3;
@@ -199,7 +205,14 @@ export const SPAWNS = {
   garageSecond: 0.4,
   dbdYeti: 0.6,
   maxChasers: 4,
+  caveYeti: 0.55,
+  caveMax: 2,
+  kennel: [2, 3] as const,
+  maxHounds: 6,
 };
+
+/** Specialists' timers and the damage a mine does (scaled by level like a gunshot). */
+export const SPECIALISTS = { mineEvery: 7, mineDamage: 12, mineAirChips: 20, healEvery: 3, healShare: 0.25, healReach: 2 };
 
 /** Kills drop cards less often now the shop sells them. */
 const KILL_CARDS = 0.5;
@@ -544,6 +557,8 @@ export class Run {
       this.events.push({ type: 'placed', card, x, y });
       if (card === 'patrol') this.spawn('guard', x, y, c);
       if (card === 'sniper') this.spawn('sniper', x, y, c);
+      if (card === 'demoShack') this.spawn('sapper', x, y, c);
+      if (card === 'fieldHospital') this.spawn('medic', x, y, c);
       if (card === 'boulder' || card === 'peak') {
         const had = st.tiles.filter((t) => t?.variant === 'dbd').length;
         markDoubleBlacks(st.tiles);
@@ -659,6 +674,8 @@ export class Run {
       cooldown: this.rng.range(0.4, def.interval),
     };
     if (kind === 'yetiKing') enemy.ability = KING_CALL;
+    if (kind === 'sapper') enemy.ability = SPECIALISTS.mineEvery * 0.6;
+    if (kind === 'medic') enemy.ability = SPECIALISTS.healEvery;
     st.enemies.push(enemy);
     this.events.push({ type: 'spawn', enemy: enemy.id, kind });
     return enemy;
@@ -677,6 +694,12 @@ export class Run {
         if (isPiste(this.map, i)) out.push(i);
       }
     return out;
+  }
+
+  /** Where a chaser leaves from: the trail beside its tile, or the nearest within two tiles. */
+  private chaseFrom(x: number, y: number): number[] {
+    const beside = this.trailNeighbours(x, y);
+    return beside.length ? beside : this.trailNear(x, y, 2);
   }
 
   private nearestTrail(x: number, y: number): number {
@@ -744,7 +767,7 @@ export class Run {
         case 'garage': {
           const n = 1 + (rng.chance(SPAWNS.garageSecond) ? 1 : 0);
           for (let k = 0; k < n && chasers < SPAWNS.maxChasers; k++) {
-            const spots = this.trailNeighbours(x, y);
+            const spots = this.chaseFrom(x, y);
             if (!spots.length) break;
             this.spawn('snowmobile', x, y, c, rng.pick(spots));
             chasers++;
@@ -752,7 +775,24 @@ export class Run {
           break;
         }
         case 'sniper':
-          if (!st.enemies.some((e) => e.home === c)) this.spawn('sniper', x, y, c);
+        case 'demoShack':
+        case 'fieldHospital':
+          if (!st.enemies.some((e) => e.home === c)) this.spawn(t.card === 'sniper' ? 'sniper' : t.card === 'demoShack' ? 'sapper' : 'medic', x, y, c);
+          break;
+        case 'kennel': {
+          const n = rng.int(SPAWNS.kennel[0], SPAWNS.kennel[1] + 1);
+          for (let k = 0; k < n; k++) {
+            const spots = this.chaseFrom(x, y);
+            if (!spots.length || st.enemies.filter((e) => e.kind === 'hound').length >= SPAWNS.maxHounds) break;
+            this.spawn('hound', x, y, c, rng.pick(spots));
+          }
+          break;
+        }
+        case 'yetiCave':
+          if (st.enemies.filter((e) => e.home === c).length < SPAWNS.caveMax && rng.chance(SPAWNS.caveYeti)) {
+            const i = this.nearestTrail(x, y);
+            if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, c);
+          }
           break;
         case 'powder':
           if (newLap) {
@@ -789,6 +829,12 @@ export class Run {
       if (!spots.length) break;
       const p = this.map.nodes[rng.pick(spots)];
       const chasers = st.enemies.filter((e) => e.ride).length;
+      if (st.lap >= 4 && chasers < SPAWNS.maxHounds && rng.chance(0.15)) {
+        const from = nodeAt(this.map, p.x, p.y);
+        for (let k = 0; k < Math.min(2, left); k++) this.spawn('hound', p.x, p.y, -1, from);
+        left -= Math.min(2, left);
+        continue;
+      }
       if (st.lap >= 3 && chasers < SPAWNS.maxChasers && rng.chance(0.2)) {
         this.spawn('snowmobile', p.x, p.y, -1, nodeAt(this.map, p.x, p.y));
         left--;
@@ -881,7 +927,22 @@ export class Run {
     const cx = p.x + 0.5;
     const cy = p.y + 0.5;
     st.lapPar += 1 / this.baseSpeed(i);
+    // Still in the air from a kicker on the tile before? Then you sail over whatever is here.
+    const flying = st.hero.airborne;
     st.hero.airborne = t?.card === 'kicker';
+    if (t?.card === 'mine') {
+      st.tiles[cell(p.x, p.y)] = null;
+      if (flying) {
+        this.events.push({ type: 'mine', x: cx, y: cy, hit: false, damage: 0 });
+        this.addChips('Mine jumped', SPECIALISTS.mineAirChips, 0, cx, cy);
+      } else {
+        const damage = Math.max(1, Math.round(SPECIALISTS.mineDamage * levelScale(st.descent, st.rating).damage) - this.stats.defense);
+        st.hero.hp -= damage;
+        if (!hasGadget(st.equipment, 'insurance')) st.lapHand.combo = 0;
+        this.events.push({ type: 'mine', x: cx, y: cy, hit: true, damage });
+        this.events.push({ type: 'heroHit', damage });
+      }
+    }
     if (isPiste(this.map, i)) {
       // Base chips for the run itself, like a Balatro hand's base: one a tile, two in a chute.
       const steep = p.kind === 'chute';
@@ -1028,6 +1089,28 @@ export class Run {
         e.ability = KING_CALL;
         const i = this.nearestTrail(Math.floor(e.x), Math.floor(e.y));
         if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, -1);
+      } else if (e.kind === 'sapper') {
+        // A mine on an open trail tile near him, never under the skier's skis.
+        e.ability = SPECIALISTS.mineEvery;
+        const me = this.heroNode();
+        const spots = this.trailNear(Math.floor(e.x), Math.floor(e.y), 2).filter((i) => {
+          const p = this.map.nodes[i];
+          return i !== me && !st.tiles[cell(p.x, p.y)];
+        });
+        if (spots.length) {
+          const p = this.map.nodes[this.rng.pick(spots)];
+          st.tiles[cell(p.x, p.y)] = { card: 'mine', timer: 0, lastLap: -1, variant: null };
+          this.events.push({ type: 'planted', x: p.x, y: p.y });
+        }
+      } else if (e.kind === 'medic') {
+        // Patches up everyone near him (not himself).
+        e.ability = SPECIALISTS.healEvery;
+        for (const o of st.enemies) {
+          if (o === e || o.hp <= 0 || o.hp >= o.maxHp || Math.hypot(o.x - e.x, o.y - e.y) > SPECIALISTS.healReach) continue;
+          const amount = Math.min(o.maxHp - o.hp, Math.ceil(o.maxHp * SPECIALISTS.healShare));
+          o.hp += amount;
+          this.events.push({ type: 'enemyHeal', x: o.x, y: o.y, amount });
+        }
       }
     }
   }

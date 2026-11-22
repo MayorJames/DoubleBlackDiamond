@@ -51,6 +51,11 @@ const TILE_SPRITES: Record<
   boulder: 'boulder',
   peak: 'peak',
   powder: 'powder',
+  yetiCave: 'yetiCave',
+  demoShack: 'demoShack',
+  fieldHospital: 'fieldHospital',
+  kennel: 'kennel',
+  mine: 'mine',
 };
 
 const SPECIAL_SPRITES: Partial<Record<CardId, SpriteName>> = {

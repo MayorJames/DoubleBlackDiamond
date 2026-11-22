@@ -20,10 +20,10 @@ export interface Building {
 
 export const BUILDINGS: Building[] = [
   { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute card: a steep shortcut straight down the mountain.', unlocks: ['chute'] },
-  { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache and Powder Field cards.', unlocks: ['cache', 'powder'] },
-  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest and Snowmobile Garage. More danger, more loot.', unlocks: ['sniper', 'garage'] },
+  { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache and Powder Field cards, and the Field Hospital: a turncoat medic for the other side.', unlocks: ['cache', 'powder', 'fieldHospital'] },
+  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest, Snowmobile Garage and Kennel. More danger, more loot.', unlocks: ['sniper', 'garage', 'kennel'] },
   { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks the Chairlift, Kicker and Ice Sheet cards.', unlocks: ['chairlift', 'kicker', 'ice'] },
-  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak and Avalanche cards.', unlocks: ['peak', 'avalanche'] },
+  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak, Avalanche, Yeti Cave and Demo Shack cards.', unlocks: ['peak', 'avalanche', 'yetiCave', 'demoShack'] },
   { id: 'weatherStation', name: 'Weather Station', cost: { cash: 600, intel: 5, scrap: 4 }, text: 'Unlocks the Whiteout and Night weather cards.', unlocks: ['whiteout', 'night'] },
   { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks the Safehouse card, gadget drops and a second gadget slot.', unlocks: ['safehouse'] },
   { id: 'rental', name: 'Rental Shop', cost: { cash: 700, intel: 0, scrap: 10 }, text: '+10% speed, and better gear drops.', unlocks: [] },

@@ -367,6 +367,117 @@ const ART: Record<CardId, (px: Px) => void> = {
     px.rect(28, 12, 1, 4, 'w');
     px.set(28, 17, 'w');
   },
+  yetiCave(px) {
+    sky(px, 0, 0, S, 14);
+    range(px, 0, S, 14, 7, 51, { tones: ['w', 's', 'l', 'm'] });
+    mountain(px, -10, 42, 31, 16, 3, { snow: 8, seed: 13, lean: 0.2 });
+    // The cave: a dark arch with a rim of rock, icicles hanging from it, and two red eyes.
+    px.ellipse(16, 24, 9.5, 9.5, 'd');
+    px.rect(6, 24, 21, 7, 'd');
+    px.ellipse(16, 24, 8, 8, 'k');
+    px.rect(8, 24, 17, 7, 'k');
+    for (const x of [10, 13, 16, 19, 22]) {
+      const top = 16 + Math.round(Math.abs(16 - x) * 0.45);
+      px.line(x, top, x, top + 2 + (x % 2), 'w');
+    }
+    px.rect(12, 23, 2, 1, 'r');
+    px.rect(18, 23, 2, 1, 'r');
+    px.set(12, 22, 'q');
+    px.set(19, 22, 'q');
+    snowField(px, 0, 29, S, 3, 51);
+    for (let k = 0; k < 5; k++) px.rect(3 + k * 6, 30 + (k % 2), 2, 1, 'm');
+  },
+  demoShack(px) {
+    backdrop(px, 15, 17);
+    // A corrugated shed with its door ajar and a warning sign.
+    px.rect(3, 12, 18, 14, (x) => (x % 2 === 0 ? 'm' : 'l'));
+    px.rect(2, 10, 20, 2, 'd');
+    px.rect(2, 9, 20, 1, 'w');
+    px.rect(2, 12, 20, 1, 'k');
+    px.rect(3, 12, 1, 14, 'k');
+    px.rect(20, 12, 1, 14, 'k');
+    px.rect(6, 17, 6, 9, 'k');
+    px.rect(7, 18, 1, 8, 'd');
+    px.poly([[13, 19], [16.5, 13], [20, 19]], 'r');
+    px.line(13, 19, 16, 13, 'k');
+    px.line(17, 13, 20, 19, 'k');
+    px.rect(13, 19, 7, 1, 'k');
+    px.rect(16, 15, 1, 2, 'w');
+    px.set(16, 18, 'w');
+    // A bundle of dynamite on a crate, its fuse fizzing.
+    px.rect(21, 21, 9, 6, (x, y) => (y === 21 ? 'l' : x % 4 === 0 ? 'd' : 'm'));
+    px.rect(21, 21, 9, 1, 'k');
+    px.rect(21, 26, 9, 1, 'k');
+    for (const [x, c] of [[22, 'r'], [24, 'q'], [26, 'r'], [28, 'q']] as const) px.rect(x, 16, 2, 5, c);
+    px.rect(22, 18, 8, 1, 'k');
+    px.line(25, 15, 27, 12, 'k');
+    px.set(28, 11, 'r');
+    px.set(29, 11, 'w');
+    px.set(28, 10, 'w');
+    px.set(27, 10, 'q');
+    // A mine in the snow out front.
+    px.ellipse(9, 29, 3.5, 1.6, 'd');
+    px.rect(8, 27, 2, 2, 'k');
+    px.set(9, 26, 'r');
+  },
+  fieldHospital(px) {
+    backdrop(px, 14, 19);
+    pine(px, 28, 22, 10);
+    // A ridge tent, lit on the left, with its flap open and a red cross.
+    px.poly([[1, 27], [12, 9], [25, 27]], (x, y) => (x < 12 - (y - 9) * 0.05 ? 'w' : 's'));
+    px.line(1, 27, 12, 9, 'k');
+    px.line(12, 9, 25, 27, 'k');
+    px.rect(1, 27, 25, 1, 'k');
+    px.poly([[10, 27], [13, 17], [16, 27]], 'd');
+    px.line(10, 27, 13, 17, 'k');
+    px.line(13, 17, 16, 27, 'k');
+    px.rect(6, 19, 2, 6, 'r');
+    px.rect(4, 21, 6, 2, 'r');
+    // The flag, and a stretcher by the door.
+    px.rect(12, 2, 1, 8, 'k');
+    px.rect(13, 2, 7, 5, 'w');
+    px.rect(15, 2, 2, 5, 'r');
+    px.rect(13, 3, 7, 2, 'r');
+    px.rect(13, 2, 7, 1, 'k');
+    px.rect(19, 2, 1, 5, 'k');
+    px.rect(13, 6, 7, 1, 'k');
+    px.rect(20, 25, 10, 2, 'l');
+    px.rect(20, 25, 10, 1, 'k');
+    px.rect(21, 27, 1, 2, 'k');
+    px.rect(28, 27, 1, 2, 'k');
+  },
+  kennel(px) {
+    backdrop(px, 14, 23);
+    // A doghouse under a red roof with a cap of snow, eyes in the dark doorway.
+    px.rect(4, 16, 14, 10, (_x, y) => (y % 3 === 0 ? 'd' : 'm'));
+    px.rect(4, 16, 1, 10, 'k');
+    px.rect(17, 16, 1, 10, 'k');
+    px.poly([[2, 17], [11, 9], [20, 17]], (_x, y) => (y < 12 ? 'w' : 'r'));
+    px.line(2, 17, 11, 9, 'k');
+    px.line(11, 9, 20, 17, 'k');
+    px.ellipse(11, 22, 3, 3.5, 'k');
+    px.rect(8, 22, 7, 4, 'k');
+    px.set(10, 22, 'r');
+    px.set(12, 22, 'r');
+    px.rect(3, 26, 16, 1, 'k');
+    // A hound bounding out, and a bowl.
+    px.sprite('hound', 16, 13);
+    px.rect(2, 27, 4, 2, 'r');
+    px.rect(2, 27, 4, 1, 'k');
+    for (let k = 0; k < 4; k++) px.set(20 + k * 3, 30 - (k % 2), 'm');
+  },
+  mine(px) {
+    backdrop(px, 12, 29);
+    trailBand(px, 19, 8);
+    // A mine half buried in the groomed snow, its light blinking red.
+    px.ellipse(16, 24, 8, 3.5, 'k');
+    px.ellipse(16, 23, 7, 3, (_x, y) => (y < 23 ? 'm' : 'd'));
+    for (const x of [11, 14, 18, 21]) px.set(x, 23, 'k');
+    px.rect(15, 18, 2, 4, 'k');
+    px.rect(15, 17, 2, 1, 'r');
+    px.set(14, 16, 'q');
+    px.set(17, 16, 'q');
+  },
   chairlift(px) {
     sky(px, 0, 0, S, S);
     range(px, 0, S, 32, 14, 41, { tones: ['w', 's', 'l', 'm'] });

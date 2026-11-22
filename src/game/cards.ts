@@ -20,6 +20,11 @@ export type CardId =
   | 'peak'
   | 'powder'
   | 'avalanche'
+  | 'yetiCave'
+  | 'demoShack'
+  | 'fieldHospital'
+  | 'kennel'
+  | 'mine'
   | 'chairlift'
   | 'chute'
   | 'whiteout'
@@ -75,6 +80,38 @@ export const CARDS: Record<CardId, CardDef> = {
   boulder: def('boulder', 'Boulder', 'landscape', 3, 1, 35, '+4 max HP.', "It's a rock."),
   peak: def('peak', 'Peak', 'landscape', 2, 1, 55, '+8 max HP. Fill a 3x3 with peaks and boulders for a Double Black Diamond.', 'Experts only.'),
   powder: def('powder', 'Powder Field', 'landscape', 2, 1, 55, 'Heals 8 HP at the start of every lap, +2 for each pine grove beside it.', 'Face shots for days.'),
+  yetiCave: def(
+    'yetiCave',
+    'Yeti Cave',
+    'landscape',
+    1,
+    2,
+    60,
+    'Most descents a yeti lumbers down to the nearest trail, two at a time at most. Huge, slow and worth a fortune.',
+    'Something in there is humming.',
+  ),
+  demoShack: def(
+    'demoShack',
+    'Demo Shack',
+    'roadside',
+    1,
+    2,
+    55,
+    "A sapper lobs grenades from 2 tiles and plants a mine on the trail nearby every 7 seconds. Mines hurt unless you're airborne. Drop him and another comes next descent.",
+    'Do not knock.',
+  ),
+  fieldHospital: def(
+    'fieldHospital',
+    'Field Hospital',
+    'roadside',
+    1,
+    2,
+    50,
+    'A turncoat medic patches up every enemy within 2 tiles every 3 seconds. Shoot him first. Drop him and another comes next descent.',
+    'Ski patrol, but for the other side.',
+  ),
+  kennel: def('kennel', 'Kennel', 'roadside', 2, 1, 40, 'Every descent, 2-3 hounds chase you down the mountain. Fast, fragile, and they bite.', 'Who let them out?'),
+  mine: def('mine', 'Mine', 'trail', 0, 0, 0, "Planted by a sapper. Hits hard when you ski over it, unless you're airborne.", 'Tick. Tick.'),
   avalanche: def('avalanche', 'Avalanche', 'special', 1, 0, 40, 'Wipes out a placed tile and everything on and around it.', 'Not the snow you ordered.'),
   chairlift: def(
     'chairlift',

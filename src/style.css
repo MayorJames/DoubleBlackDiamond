@@ -595,6 +595,14 @@ input:focus-visible {
   font-size: 18px;
 }
 
+.pop.heal {
+  color: var(--paper);
+  text-shadow: none;
+  background: var(--red);
+  padding: 1px 4px;
+  font-size: 10px;
+}
+
 .pop.loot {
   color: var(--paper);
   text-shadow: none;
