@@ -2,7 +2,7 @@
 // cached. Cards show it at 2x, the card tooltip at 3x, the lodge deck at 1x.
 
 import type { CardId } from '../../game/cards';
-import { Px } from './pixel';
+import { bayer, Px } from './pixel';
 import { blackDiamond, cloud, flag, flakes, mountain, pine, range, sky, smoke, snowField } from './scenery';
 
 const S = 32;
@@ -24,7 +24,63 @@ function trailBand(px: Px, y: number, h: number): void {
 /** A tiny skier in the red jacket, 7x8, facing right. */
 const SKIER = ['..rr...', '.kkkk..', '.kwwk..', '..rrr..', '.rrqrk.', '..qq...', '..k.k..', 'kkkkkkk'];
 
+/** A dossier: a manila folder with a clipped photo of the boss and a red stamp. */
+function dossier(px: Px, photo: (px: Px, x: number, y: number) => void): void {
+  px.rect(0, 0, S, S, (x, y) => (bayer(x, y, 4) ? 'd' : 'k'));
+  px.rect(3, 5, 12, 3, 'm');
+  px.rect(3, 7, 27, 22, (x, y) => (bayer(x, y, 2) ? 'm' : 'l'));
+  px.rect(3, 7, 27, 1, 'w');
+  px.rect(3, 28, 27, 1, 'd');
+  // The photo, with a paper clip.
+  px.rect(6, 9, 14, 16, 's');
+  px.rect(6, 9, 14, 1, 'k');
+  px.rect(6, 24, 14, 1, 'k');
+  px.rect(6, 9, 1, 16, 'k');
+  px.rect(19, 9, 1, 16, 'k');
+  photo(px, 7, 10);
+  px.rect(9, 7, 2, 5, 'm');
+  px.rect(9, 7, 2, 1, 'k');
+  // Typed lines and the stamp.
+  for (const y of [12, 15, 18]) px.rect(22, y, 6, 1, 'd');
+  px.rect(21, 21, 8, 5, 'r');
+  px.rect(22, 22, 6, 3, 'l');
+  px.rect(23, 23, 4, 1, 'r');
+}
+
 const ART: Record<CardId, (px: Px) => void> = {
+  dossierWidow(px) {
+    dossier(px, (p, x, y) => {
+      p.ellipse(x + 6, y + 6, 6, 6, 'k');
+      p.ellipse(x + 6, y + 7, 3.5, 4.5, 'w');
+      p.rect(x + 4, y + 6, 1, 1, 'k');
+      p.rect(x + 8, y + 6, 1, 1, 'k');
+      p.rect(x + 5, y + 9, 3, 1, 'r');
+      p.rect(x, y + 12, 12, 2, 'w');
+    });
+  },
+  dossierYetiKing(px) {
+    dossier(px, (p, x, y) => {
+      p.ellipse(x + 6, y + 8, 6, 6, (i, j) => (bayer(i, j, 4) ? 's' : 'w'));
+      p.ellipse(x + 6, y + 9, 3.5, 3, 'm');
+      p.rect(x + 4, y + 8, 1, 1, 'r');
+      p.rect(x + 8, y + 8, 1, 1, 'r');
+      p.rect(x + 5, y + 10, 3, 1, 'k');
+      p.rect(x + 2, y + 1, 9, 2, 'r');
+      for (const k of [2, 5, 8]) p.set(x + k + 0.5, y, 'r');
+    });
+  },
+  dossierKickback(px) {
+    dossier(px, (p, x, y) => {
+      p.ellipse(x + 6, y + 4, 5.5, 4, 'w');
+      p.rect(x + 5, y, 2, 5, 'r');
+      p.rect(x + 1, y + 5, 10, 1, 'k');
+      p.ellipse(x + 6, y + 8, 4, 4, 'w');
+      p.rect(x + 4, y + 8, 1, 1, 'k');
+      p.rect(x + 8, y + 8, 1, 1, 'k');
+      p.rect(x + 4, y + 10, 5, 1, 'k');
+      p.rect(x, y + 12, 12, 2, 'r');
+    });
+  },
   patrol(px) {
     backdrop(px, 15, 3);
     trailBand(px, 23, 6);

@@ -78,6 +78,7 @@
           <span><span class="label">Cash</span><b id="run-cash">$0</b></span>
           <span><span class="label">Intel</span><b id="run-intel">0</b></span>
           <span><span class="label">Scrap</span><b id="run-scrap">0</b></span>
+          <span title="Intel fragments drop once you've built a chairlift. Three make a dossier: a boss card."><span class="label">Dossier</span><b id="run-frag">0/3</b></span>
         </div>
         <div class="tb speed" role="group" aria-label="Game speed">
           <button data-speed="0" title="Pause (Space)">II</button>
@@ -103,8 +104,13 @@
 
       <aside id="side">
         <section class="panel hero">
-          <div class="hp-row"><span class="label">HP</span><b id="hp-text">60/60</b></div>
-          <div class="hpbar"><i id="hp-fill"></i></div>
+          <div class="hero-head">
+            <img id="hero-portrait" alt="Your spy" width="80" height="80" />
+            <div class="hero-vitals">
+              <div class="hp-row"><span class="label">HP</span><b id="hp-text">60/60</b></div>
+              <div class="hpbar"><i id="hp-fill"></i></div>
+            </div>
+          </div>
           <div class="stance" role="group" aria-label="Stance">
             <button data-stance="tuck" title="W">Tuck</button>
             <button data-stance="cruise">Cruise</button>
@@ -153,6 +159,23 @@
           <button id="ride-again" class="btn go" type="button">Ride again <kbd>Enter</kbd></button>
           <button id="call-it" class="btn" type="button">Call it a day · keep 100%</button>
         </div>
+      </div>
+    </div>
+
+    <!-- A boss arrives: their dossier, with a portrait. -->
+    <div id="boss-splash" class="overlay hidden">
+      <div class="panel modal dossier-modal">
+        <span class="stamp">Top secret</span>
+        <div class="dossier-body">
+          <img id="boss-portrait" alt="" width="160" height="160" />
+          <div>
+            <span id="boss-epithet" class="label"></span>
+            <h2 id="boss-name"></h2>
+            <p id="boss-text"></p>
+            <p id="boss-reward" class="reward"></p>
+          </div>
+        </div>
+        <div class="modal-actions"><button id="boss-go" class="btn go" type="button">Bring it on <kbd>Enter</kbd></button></div>
       </div>
     </div>
 

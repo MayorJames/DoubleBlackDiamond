@@ -5,7 +5,7 @@
 
 import type { CardId, TileState } from '../game/cards';
 import { MAP_H, MAP_W, TILE } from '../game/constants';
-import type { Enemy } from '../game/enemies';
+import { isBoss, type Enemy } from '../game/enemies';
 import { dirOf, rideNode, type Dir, type MountainMap, type Segment } from '../game/map';
 import type { Run } from '../game/run';
 import { hashSeed } from '../game/rng';
@@ -33,7 +33,7 @@ import { Atlas, type SpriteName } from './sprites';
 export const ART_W = MAP_W * TILE;
 export const ART_H = MAP_H * TILE;
 
-const TILE_SPRITES: Record<Exclude<CardId, 'avalanche' | 'chairlift' | 'chute'>, SpriteName> = {
+const TILE_SPRITES: Record<Exclude<CardId, 'avalanche' | 'chairlift' | 'chute' | 'dossierWidow' | 'dossierYetiKing' | 'dossierKickback'>, SpriteName> = {
   patrol: 'patrol',
   moguls: 'moguls',
   kicker: 'kicker',
@@ -49,8 +49,16 @@ const TILE_SPRITES: Record<Exclude<CardId, 'avalanche' | 'chairlift' | 'chute'>,
   powder: 'powder',
 };
 
-export const spriteForCard = (card: CardId): SpriteName =>
-  card === 'avalanche' ? 'peak' : card === 'chairlift' ? 'chairlift' : card === 'chute' ? 'chute' : TILE_SPRITES[card];
+const SPECIAL_SPRITES: Partial<Record<CardId, SpriteName>> = {
+  avalanche: 'peak',
+  chairlift: 'chairlift',
+  chute: 'chute',
+  dossierWidow: 'widow',
+  dossierYetiKing: 'yetiKing',
+  dossierKickback: 'kickback',
+};
+
+export const spriteForCard = (card: CardId): SpriteName => SPECIAL_SPRITES[card] ?? TILE_SPRITES[card as keyof typeof TILE_SPRITES];
 
 const ROTATION: Record<Dir, number> = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 };
 
@@ -430,7 +438,7 @@ export class MapRenderer {
     if (e.ride) flip = dirOf(run.map, e.ride.at, e.ride.to) === 'left';
     if (e.kind === 'sniper') name = 'sniper';
     const sprite = this.atlas.get(name, flip);
-    const big = e.kind === 'baron' ? 2 : 1;
+    const big = isBoss(e.kind) ? 2 : 1;
     const w = sprite.width * big;
     const h = sprite.height * big;
     const bob = !e.ride && e.kind !== 'sniper' ? Math.floor(time * 2 + e.id * 0.37) % 2 : 0;
@@ -449,7 +457,7 @@ export class MapRenderer {
       b.fillRect(fx - 1, topY + Math.round(h * 0.68), 3, 2);
     }
     if (e.hp < e.maxHp) {
-      const bw = e.kind === 'baron' ? 24 : 12;
+      const bw = big > 1 ? 24 : 12;
       const bx = Math.round(px - bw / 2);
       const by = topY - 3;
       b.fillStyle = INK;

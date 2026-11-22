@@ -986,6 +986,85 @@ input:focus-visible {
   min-height: 34px;
 }
 
+.hero-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+#hero-portrait {
+  flex: none;
+  width: 80px;
+  height: 80px;
+  border: 3px solid var(--ink);
+  image-rendering: pixelated;
+}
+
+.hero-vitals {
+  flex: 1;
+  min-width: 0;
+}
+
+.dossier-modal {
+  position: relative;
+  max-width: 620px;
+  background: repeating-linear-gradient(0deg, var(--paper) 0 22px, var(--shade) 22px 23px);
+  animation: slam 0.35s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+@keyframes slam {
+  from {
+    transform: scale(1.4) rotate(-4deg);
+    opacity: 0;
+  }
+}
+
+.dossier-modal .stamp {
+  position: absolute;
+  top: -18px;
+  right: 22px;
+  background: var(--paper);
+  padding: 4px 10px;
+  border: 3px solid var(--red);
+  color: var(--red);
+  font: 700 14px var(--pixel);
+  text-transform: uppercase;
+  rotate: 8deg;
+}
+
+.dossier-body {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+#boss-portrait {
+  flex: none;
+  width: 160px;
+  height: 160px;
+  border: 3px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
+  rotate: -2deg;
+  image-rendering: pixelated;
+}
+
+#boss-name {
+  margin: 4px 0 8px;
+  color: var(--red);
+}
+
+#boss-text {
+  margin: 0 0 10px;
+}
+
+.dossier-modal .reward {
+  margin: 0;
+  padding: 6px 8px;
+  border: 2px dashed var(--ink);
+  background: var(--paper);
+}
+
 .junction {
   display: flex;
   align-items: center;

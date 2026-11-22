@@ -246,3 +246,100 @@ describe('the deck', () => {
     for (const card of run.state.hand) expect(deck).toContain(card);
   });
 });
+
+describe('dossier bosses', () => {
+  /** A run with a chairlift built, so fragments can drop. */
+  function withLift(seed = 'alpine'): Run {
+    const run = Run.create({ seed, deck: STARTER_DECK });
+    placeRoute(run, 'chairlift');
+    run.drainEvents();
+    return run;
+  }
+  /** Kills an enemy of `kind` right next to the skier by dropping its HP to 1. */
+  function killNear(run: Run, kind: 'yeti' | 'guard'): RunEvent[] {
+    const me = run.heroPos();
+    run.state.enemies.push({ id: 5000 + run.state.tick, kind, level: 1, hp: 1, maxHp: 1, x: me.x, y: me.y, ride: null, home: -1, cooldown: 99 });
+    run.state.hero.cooldown = 0;
+    run.state.hero.stance = 'plow';
+    const out: RunEvent[] = [];
+    for (let t = 0; t < 120 && run.state.enemies.some((e) => e.id >= 5000); t++) {
+      run.state.hero.hp = 500;
+      run.state.hero.cooldown = Math.min(run.state.hero.cooldown, 0);
+      run.step();
+      out.push(...run.drainEvents());
+      for (const e of run.state.enemies) if (e.id >= 5000) Object.assign(e, run.heroPos());
+    }
+    return out;
+  }
+
+  it('fragments only drop once the mountain has a lift you built, and three make a dossier', () => {
+    const bare = Run.create({ seed: 'alpine', deck: STARTER_DECK });
+    killNear(bare, 'yeti');
+    expect(bare.state.fragments).toBe(0);
+
+    const run = withLift();
+    const events = [...killNear(run, 'yeti'), ...killNear(run, 'yeti'), ...killNear(run, 'yeti')];
+    expect(events.filter((e) => e.type === 'fragment')).toHaveLength(3);
+    const dossier = events.find((e) => e.type === 'dossier');
+    expect(dossier).toBeDefined();
+    expect(run.state.fragments).toBe(0);
+    expect(run.state.hand.some((c) => c.startsWith('dossier'))).toBe(true);
+  });
+
+  it('the Ice Widow freezes the trail around her; the Yeti King calls yetis; Kickback chases', () => {
+    const summon = (card: CardId) => {
+      const run = withLift('powder');
+      const node = run.map.nodes.find((n, i) => i < run.map.loopLength && n.kind === 'trail' && n.y >= 4 && run.canPlace(card, n.x, n.y))!;
+      run.state.hand.unshift(card);
+      run.step([{ type: 'place', hand: 0, x: node.x, y: node.y }]);
+      return { run, node, events: run.drainEvents() };
+    };
+    const widow = summon('dossierWidow');
+    expect(widow.events.some((e) => e.type === 'bossArrives' && e.kind === 'widow')).toBe(true);
+    expect(widow.run.state.tiles.filter((t) => t?.card === 'ice').length).toBeGreaterThan(0);
+
+    const king = summon('dossierYetiKing');
+    const yetis = () => king.run.state.enemies.filter((e) => e.kind === 'yeti').length;
+    const before = yetis();
+    for (let t = 0; t < 30 * 10 + 5; t++) {
+      king.run.state.hero.hp = 999;
+      king.run.step();
+    }
+    expect(yetis()).toBeGreaterThan(before);
+
+    const kick = summon('dossierKickback');
+    const captain = kick.run.state.enemies.find((e) => e.kind === 'kickback')!;
+    expect(captain.ride).not.toBeNull();
+  });
+
+  it('beating a dossier boss pays a bounty and drops its one-of-a-kind reward', () => {
+    const run = withLift('powder');
+    const me = run.heroPos();
+    run.state.enemies.push({ id: 7000, kind: 'widow', level: 1, hp: 1, maxHp: 200, x: me.x, y: me.y, ride: null, home: -1, cooldown: 99 });
+    const cash = run.state.cash;
+    const events: RunEvent[] = [];
+    for (let t = 0; t < 200 && run.state.enemies.some((e) => e.id === 7000); t++) {
+      run.state.hero.hp = 999;
+      run.step([{ type: 'stance', stance: 'plow' }]);
+      events.push(...run.drainEvents());
+      const w = run.state.enemies.find((e) => e.id === 7000);
+      if (w) Object.assign(w, run.heroPos());
+    }
+    expect(events.some((e) => e.type === 'bossDown' && e.kind === 'widow')).toBe(true);
+    expect(run.state.cash).toBeGreaterThanOrEqual(cash + 1000);
+    const monocle = run.state.inventory.find((i) => i.gadget === 'monocle');
+    expect(monocle?.unique).toBe(true);
+    expect(run.state.record.bosses).toEqual(['widow']);
+  });
+
+  it("bosses' one-of-a-kind gadgets never turn up as ordinary loot", async () => {
+    const { rollItem } = await import('../src/game/items');
+    const { Rng } = await import('../src/game/rng');
+    const rng = Rng.fromSeed('loot');
+    for (let i = 0; i < 3000; i++) {
+      const item = rollItem(rng, i, 5, 0.3, true);
+      expect(item.unique).toBeUndefined();
+      expect(['monocle', 'sled']).not.toContain(item.gadget);
+    }
+  });
+});

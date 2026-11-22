@@ -2,10 +2,10 @@
 // is deterministic. Commands (stance, placing a card, flipping a junction, equipping, the lodge
 // decision) are the only thing that enters, so a run replays exactly from its seed and commands.
 
-import { canPlace, CARDS, countAround, markDoubleBlacks, newTiles, ROUTE_OF, type CardId, type Tiles } from './cards';
+import { BOSS_OF, canPlace, CARDS, countAround, markDoubleBlacks, newTiles, ROUTE_OF, type CardId, type Tiles } from './cards';
 import { DAY_SECONDS, DT, HAND_SIZE, INVENTORY_SIZE, MAP_W, MAX_ENEMIES_PER_TILE } from './constants';
-import { ENEMIES, levelScale, RATINGS, type Enemy, type EnemyKind } from './enemies';
-import { rollGadget, rollItem, STARTER_GUN, type Item, type Slot } from './items';
+import { ENEMIES, isBoss, levelScale, RATINGS, type BossKind, type Enemy, type EnemyKind } from './enemies';
+import { rollGadget, rollItem, STARTER_GUN, uniqueReward, type Item, type Slot } from './items';
 import {
   cell,
   dirOf,
@@ -23,7 +23,7 @@ import {
 import { hashSeed, Rng, type RngState } from './rng';
 import { computeStats, hasGadget, NO_BONUSES, powderHeal, STANCES, type Equipment, type LodgeBonuses, type Stance, type Stats } from './stats';
 
-export const RUN_VERSION = 2;
+export const RUN_VERSION = 3;
 
 export type RunStatus = 'riding' | 'lodge' | 'won' | 'retreated' | 'bailed' | 'wiped';
 
@@ -80,10 +80,12 @@ export interface RunState {
   boss: { meter: number; max: number; spawned: boolean };
   lapHand: LapHand;
   permanentMult: number;
+  /** Intel fragments towards the next dossier (three make one). */
+  fragments: number;
   cash: number;
   intel: number;
   scrap: number;
-  record: { kills: number; bestLap: number; placed: number; items: number; descents: number };
+  record: { kills: number; bestLap: number; placed: number; items: number; descents: number; bosses: BossKind[] };
   status: RunStatus;
   payout: Payout | null;
 }
@@ -117,6 +119,10 @@ export type RunEvent =
   | { type: 'lap'; lap: number; chips: number; mult: number; points: number; lines: HandLine[]; lapTime: number; descents: number }
   | { type: 'day'; day: number }
   | { type: 'boss' }
+  | { type: 'bossArrives'; kind: EnemyKind }
+  | { type: 'bossDown'; kind: BossKind; reward: string }
+  | { type: 'fragment'; count: number; x: number; y: number }
+  | { type: 'dossier'; card: CardId; boss: BossKind }
   | { type: 'discard'; card: CardId }
   | { type: 'end'; status: RunStatus; payout: Payout };
 
@@ -133,7 +139,17 @@ const KILL_LINES: Record<EnemyKind, string> = {
   snowmobile: 'Snowmobiles',
   yeti: 'Yetis',
   baron: 'The Baron',
+  widow: 'The Ice Widow',
+  yetiKing: 'The Yeti King',
+  kickback: 'Captain Kickback',
 };
+
+/** Chance each kind drops an intel fragment, once the mountain has a second lift. */
+const FRAGMENT_CHANCE: Partial<Record<EnemyKind, number>> = { guard: 0.06, sniper: 0.35, snowmobile: 0.35, yeti: 1 };
+const DOSSIER_FOR: Record<BossKind, CardId> = { widow: 'dossierWidow', yetiKing: 'dossierYetiKing', kickback: 'dossierKickback' };
+export const FRAGMENTS_PER_DOSSIER = 3;
+/** Cash for beating a dossier boss. */
+export const BOSS_BOUNTY = 1000;
 
 /** Offsets so up to three enemies on one tile stand apart. */
 const SLOT_OFFSETS = [
@@ -199,10 +215,11 @@ export class Run {
       boss: { meter: 0, max: RATINGS[rating].boss, spawned: false },
       lapHand: freshHand(0),
       permanentMult: 0,
+      fragments: 0,
       cash: 0,
       intel: 0,
       scrap: 0,
-      record: { kills: 0, bestLap: 0, placed: 0, items: 0, descents: 0 },
+      record: { kills: 0, bestLap: 0, placed: 0, items: 0, descents: 0, bosses: [] },
       status: 'riding',
       payout: null,
     };
@@ -384,8 +401,11 @@ export class Run {
     const c = cell(x, y);
     const before = this.stats.maxHp;
     const route = ROUTE_OF[card];
+    const boss = BOSS_OF[card];
 
-    if (route) {
+    if (boss) {
+      this.summon(boss, x, y);
+    } else if (route) {
       // New routes open straight away: the switch starts on the route you just built.
       st.routes.push({ kind: route, x, y, take: true });
       this.map = generateMap(st.seed, st.routes);
@@ -421,7 +441,43 @@ export class Run {
       const top = this.map.nodes[this.map.summit];
       this.spawn('baron', top.x, top.y, -1, this.map.summit);
       this.events.push({ type: 'boss' });
+      this.events.push({ type: 'bossArrives', kind: 'baron' });
     }
+  }
+
+  /** A dossier boss takes the field at (x, y). */
+  private summon(boss: BossKind, x: number, y: number): void {
+    const st = this.state;
+    if (boss === 'kickback') this.spawn('kickback', x, y, -1, nodeAt(this.map, x, y));
+    else this.spawn(boss, x, y, cell(x, y));
+    if (boss === 'widow') {
+      // She freezes the trail around her: the nearest open trail tiles turn to ice.
+      const around = this.map.nodes
+        .map((n, i) => ({ n, i, d: Math.max(Math.abs(n.x - x), Math.abs(n.y - y)) }))
+        .filter(({ n, i, d }) => d > 0 && d <= 2 && isPiste(this.map, i) && !st.tiles[cell(n.x, n.y)])
+        .sort((a, b) => a.d - b.d || a.i - b.i)
+        .slice(0, 5);
+      for (const { n } of around) {
+        st.tiles[cell(n.x, n.y)] = { card: 'ice', timer: 3, lastLap: -1, variant: null };
+        this.events.push({ type: 'placed', card: 'ice', x: n.x, y: n.y });
+      }
+    }
+    this.events.push({ type: 'bossArrives', kind: boss });
+  }
+
+  /** Three fragments make a dossier: a boss card for one you haven't faced this expedition. */
+  private addDossier(): void {
+    const st = this.state;
+    const all: BossKind[] = ['widow', 'yetiKing', 'kickback'];
+    const fresh = all.filter((b) => !st.record.bosses.includes(b) && !st.hand.includes(DOSSIER_FOR[b]));
+    const boss = this.rng.pick(fresh.length ? fresh : all);
+    st.hand.push(DOSSIER_FOR[boss]);
+    if (st.hand.length > HAND_SIZE) {
+      const dropped = st.hand.shift()!;
+      st.intel++;
+      this.events.push({ type: 'discard', card: dropped });
+    }
+    this.events.push({ type: 'dossier', card: DOSSIER_FOR[boss], boss });
   }
 
   private equip(index: number): void {
@@ -456,7 +512,9 @@ export class Run {
     let ex = x + 0.5;
     let ey = y + 0.5;
     let ride: Ride | null = null;
-    if (from < 0) {
+    if (from < 0 && isBoss(kind)) {
+      ey -= 0.1;
+    } else if (from < 0) {
       const here = this.enemiesAt(cell(x, y));
       if (here.length >= MAX_ENEMIES_PER_TILE) return null;
       const used = new Set(here.map((e) => `${(e.x - x - 0.5).toFixed(2)}`));
@@ -469,8 +527,8 @@ export class Run {
       ex = p.x;
       ey = p.y;
     }
-    // The boss has fixed stats; everything else levels up with the descent it arrives on.
-    const level = kind === 'baron' ? 1 : st.descent;
+    // Bosses have fixed stats; everything else levels up with the descent it arrives on.
+    const level = isBoss(kind) ? 1 : st.descent;
     const scale = levelScale(level, st.rating);
     const enemy: Enemy = {
       id: st.nextId++,
@@ -572,6 +630,11 @@ export class Run {
         if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, c);
       }
     });
+    // The Yeti King calls one of his subjects down every day.
+    for (const king of st.enemies.filter((e) => e.kind === 'yetiKing' && e.hp > 0)) {
+      const i = this.nearestTrail(Math.floor(king.x), Math.floor(king.y));
+      if (i >= 0) this.spawn('yeti', this.map.nodes[i].x, this.map.nodes[i].y, -1);
+    }
   }
 
   // --- Movement and the lap -----------------------------------------------------------------
@@ -628,8 +691,9 @@ export class Run {
     st.descent++;
     st.lapDescents++;
     st.record.descents++;
-    st.lapHand.mult += ROUTE_TUNING.chainMult;
-    this.line('Chained descents', 0, ROUTE_TUNING.chainMult);
+    const mult = ROUTE_TUNING.chainMult * (hasGadget(st.equipment, 'sled') ? 2 : 1);
+    st.lapHand.mult += mult;
+    this.line('Chained descents', 0, mult);
     const me = this.heroPos();
     this.events.push({ type: 'chain', descents: st.lapDescents, x: me.x, y: me.y });
   }
@@ -711,7 +775,8 @@ export class Run {
 
   private end(status: RunStatus): void {
     const st = this.state;
-    const fraction = status === 'retreated' || status === 'won' ? 1 : status === 'bailed' ? 0.6 : 0.3;
+    const bail = hasGadget(st.equipment, 'sled') ? 0.8 : 0.6;
+    const fraction = status === 'retreated' || status === 'won' ? 1 : status === 'bailed' ? bail : 0.3;
     const payout: Payout = {
       cash: Math.floor(st.cash * fraction * RATINGS[st.rating].payout),
       intel: Math.floor(st.intel * fraction),
@@ -799,8 +864,10 @@ export class Run {
         const steady = onLift ? (hasGadget(st.equipment, 'liftPass') ? 1.5 : 1.2) : 1;
         const chance = stats.accuracy * stance.accuracy * terrainAim * steady - ENEMIES[target.kind].evasion;
         const hit = rng.next() < Math.min(0.97, Math.max(0.05, chance));
-        const crit = hit && (rng.next() < stats.crit || (hero.airborne && airhead));
-        const damage = hit ? Math.round(stats.damage * (crit ? (hero.airborne && airhead ? 3 : 2) : 1)) : 0;
+        const monocle = hasGadget(st.equipment, 'monocle');
+        const crit = hit && (rng.next() < stats.crit + (monocle ? 0.15 : 0) || (hero.airborne && airhead));
+        const critMult = (hero.airborne && airhead) || monocle ? 3 : 2;
+        const damage = hit ? Math.round(stats.damage * (crit ? critMult : 1)) : 0;
         this.events.push({ type: 'shot', fromX: me.x, fromY: me.y, toX: target.x, toY: target.y, hit, damage, crit, target: target.id });
         if (hit) this.damage(target, damage);
       }
@@ -883,6 +950,32 @@ export class Run {
     if (scrap) {
       st.scrap += scrap;
       this.events.push({ type: 'loot', what: 'scrap', label: `+${scrap} scrap`, x: e.x, y: e.y });
+    }
+
+    // Intel fragments, once the mountain has a lift of your own: three make a dossier.
+    const fragmentChance = FRAGMENT_CHANCE[e.kind] ?? 0;
+    if (fragmentChance > 0 && st.routes.some((r) => r.kind === 'lift') && this.rng.chance(fragmentChance)) {
+      st.fragments++;
+      this.events.push({ type: 'fragment', count: st.fragments, x: e.x, y: e.y });
+      if (st.fragments >= FRAGMENTS_PER_DOSSIER) {
+        st.fragments -= FRAGMENTS_PER_DOSSIER;
+        this.addDossier();
+      }
+    }
+
+    // A dossier boss pays a bounty and drops its one-of-a-kind reward.
+    if (e.kind === 'widow' || e.kind === 'yetiKing' || e.kind === 'kickback') {
+      const reward = uniqueReward(e.kind, st.nextId++);
+      st.inventory.push(reward);
+      st.record.items++;
+      if (st.inventory.length > INVENTORY_SIZE) {
+        const old = st.inventory.shift()!;
+        st.scrap += 1 + old.rarity * 2;
+      }
+      st.record.bosses.push(e.kind);
+      st.cash += BOSS_BOUNTY;
+      this.events.push({ type: 'loot', what: 'item', label: reward.name, x: e.x, y: e.y });
+      this.events.push({ type: 'bossDown', kind: e.kind, reward: reward.name });
     }
 
     if (hasGadget(st.equipment, 'snowballs')) {

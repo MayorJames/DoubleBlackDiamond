@@ -1,7 +1,8 @@
 // The lap tally at the lodge (Balatro's scoring moment, plus the vision's "Ride again?") and
 // the end-of-expedition result.
 
-import { RATINGS } from '../game/enemies';
+import { BOSS_INFO, ENEMIES, RATINGS, type BossKind } from '../game/enemies';
+import { portraitUrl } from '../render/art/portraits';
 import type { HandLine, Payout, RunStatus } from '../game/run';
 import { formatCash } from './runUi';
 
@@ -23,7 +24,10 @@ export interface TallyInfo {
 export class Overlays {
   private counting = 0;
 
+  private onBossClose: (() => void) | null = null;
+
   constructor(hooks: { rideAgain: () => void; callIt: () => void; toLodge: () => void }) {
+    $('boss-go').addEventListener('click', () => this.hideBoss());
     $('ride-again').addEventListener('click', hooks.rideAgain);
     $('call-it').addEventListener('click', hooks.callIt);
     $('to-lodge').addEventListener('click', hooks.toLodge);
@@ -31,6 +35,31 @@ export class Overlays {
 
   get tallyOpen(): boolean {
     return !$('tally').classList.contains('hidden');
+  }
+
+  get bossOpen(): boolean {
+    return !$('boss-splash').classList.contains('hidden');
+  }
+
+  /** A boss's dossier slams down over the map; `onClose` runs when you dismiss it. */
+  showBoss(kind: 'baron' | BossKind, onClose: () => void): void {
+    const info = BOSS_INFO[kind];
+    $<HTMLImageElement>('boss-portrait').src = portraitUrl(kind, 4);
+    $('boss-epithet').textContent = info.epithet;
+    $('boss-name').textContent = ENEMIES[kind].name;
+    $('boss-text').textContent = info.text;
+    $('boss-reward').textContent = info.reward;
+    $('boss-splash').classList.remove('hidden');
+    this.onBossClose = onClose;
+    $('boss-go').focus();
+  }
+
+  hideBoss(): void {
+    if (!this.bossOpen) return;
+    $('boss-splash').classList.add('hidden');
+    const done = this.onBossClose;
+    this.onBossClose = null;
+    done?.();
   }
 
   get resultOpen(): boolean {

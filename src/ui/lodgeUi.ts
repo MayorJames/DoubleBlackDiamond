@@ -2,7 +2,7 @@
 // (trail rating, seed, and the deck you choose from the cards your buildings have unlocked).
 
 import { CARDS } from '../game/cards';
-import { RATINGS } from '../game/enemies';
+import { ENEMIES, RATINGS } from '../game/enemies';
 import { BUILDINGS, canAfford, type Building, DECK_MAX, DECK_MIN, deckFor, unlockedCards, type BuildingId, type Profile } from '../game/lodge';
 import type { CardId } from '../game/cards';
 import { cardArtUrl } from '../render/art/cardArt';
@@ -104,8 +104,9 @@ export class LodgeUi {
     $('p-cash').textContent = formatCash(p.cash);
     $('p-intel').textContent = String(p.intel);
     $('p-scrap').textContent = String(p.scrap);
+    const trophies = p.trophies?.length ? ` · Trophies: ${p.trophies.map((t) => ENEMIES[t].name).join(', ')}` : '';
     $('p-record').textContent = p.runs
-      ? `Expeditions ${p.runs} · Barons beaten ${p.bossesBeaten} · Best haul ${formatCash(p.bestRun)}`
+      ? `Expeditions ${p.runs} · Barons beaten ${p.bossesBeaten} · Best haul ${formatCash(p.bestRun)}${trophies}`
       : 'No expeditions yet. The mountain is waiting.';
     this.renderRatings(p);
 

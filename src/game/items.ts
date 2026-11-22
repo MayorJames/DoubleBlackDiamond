@@ -9,7 +9,7 @@ export type Slot = GearSlot | 'gadget1' | 'gadget2';
 export type Rarity = 0 | 1 | 2;
 export type StatKey = 'maxHp' | 'damage' | 'fireRate' | 'range' | 'accuracy' | 'defense' | 'evasion' | 'speed' | 'crit' | 'regen';
 
-export type GadgetId = 'treeHugger' | 'airhead' | 'plowReload' | 'insurance' | 'speedDemon' | 'liftPass' | 'snowballs';
+export type GadgetId = 'treeHugger' | 'airhead' | 'plowReload' | 'insurance' | 'speedDemon' | 'liftPass' | 'snowballs' | 'monocle' | 'sled';
 
 export interface Item {
   id: number;
@@ -20,6 +20,8 @@ export interface Item {
   level: number;
   stats: Partial<Record<StatKey, number>>;
   gadget?: GadgetId;
+  /** One of a kind: a boss's reward, never found any other way. */
+  unique?: boolean;
 }
 
 export const RARITY_NAMES = ['Common', 'Rare', 'Legendary'] as const;
@@ -32,8 +34,18 @@ export const GADGETS: Record<GadgetId, { name: string; text: string }> = {
   speedDemon: { name: 'Speed Demon', text: 'Tucking builds mult twice as fast.' },
   liftPass: { name: 'Season Pass', text: 'Lift rides heal three times faster, and your aim on the lift is steadier.' },
   snowballs: { name: 'Exploding Snowballs', text: 'Kills splash 8 damage onto everything within a tile.' },
+  monocle: { name: "The Widow's Monocle", text: '+15% crit chance, and crits hit for triple.' },
+  sled: { name: 'Getaway Sled', text: 'Chained descents give +2 mult, and bailing out keeps 80%.' },
 };
-export const GADGET_IDS = Object.keys(GADGETS) as GadgetId[];
+/** Gadgets that drop from ordinary loot (not the bosses' one-of-a-kind ones). */
+export const GADGET_IDS: GadgetId[] = ['treeHugger', 'airhead', 'plowReload', 'insurance', 'speedDemon', 'liftPass', 'snowballs'];
+
+/** The one-of-a-kind reward each dossier boss drops. */
+export function uniqueReward(boss: 'widow' | 'yetiKing' | 'kickback', id: number): Item {
+  if (boss === 'yetiKing') return { id, slot: 'jacket', name: 'Yeti Pelt', rarity: 2, level: 1, stats: { maxHp: 45, regen: 1, defense: 3 }, unique: true };
+  const gadget: GadgetId = boss === 'widow' ? 'monocle' : 'sled';
+  return { id, slot: 'gadget', name: GADGETS[gadget].name, rarity: 2, level: 1, stats: {}, gadget, unique: true };
+}
 
 const NAMES: Record<GearSlot, string[][]> = {
   gun: [

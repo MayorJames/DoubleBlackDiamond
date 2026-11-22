@@ -4,6 +4,7 @@
 // saving it is the client's job.
 
 import type { CardId } from './cards';
+import type { BossKind } from './enemies';
 import type { Payout, RunStatus } from './run';
 import { NO_BONUSES, type LodgeBonuses } from './stats';
 
@@ -48,6 +49,8 @@ export interface Profile {
   bestRun: number;
   /** The cards you take on an expedition, chosen from those you've unlocked. */
   deck: CardId[];
+  /** Dossier bosses you have beaten, at least once each. */
+  trophies: BossKind[];
 }
 
 export const newProfile = (): Profile => ({
@@ -61,6 +64,7 @@ export const newProfile = (): Profile => ({
   bossesBeaten: 0,
   bestRun: 0,
   deck: [...STARTER_DECK],
+  trophies: [],
 });
 
 /** Every card your buildings have unlocked, starter cards first. */
@@ -119,8 +123,9 @@ export function build(p: Profile, id: BuildingId): boolean {
   return true;
 }
 
-/** Bank an expedition's payout. Beating the boss on your top rating unlocks the next one. */
-export function bankRun(p: Profile, status: RunStatus, payout: Payout, rating: number): void {
+/** Bank an expedition's payout. Beating the Baron on your top rating unlocks the next one. */
+export function bankRun(p: Profile, status: RunStatus, payout: Payout, rating: number, bosses: readonly BossKind[] = []): void {
+  for (const b of bosses) if (!p.trophies.includes(b)) p.trophies.push(b);
   p.cash += payout.cash;
   p.intel += payout.intel;
   p.scrap += payout.scrap;

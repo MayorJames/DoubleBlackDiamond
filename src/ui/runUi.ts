@@ -26,6 +26,7 @@ const KIND_LABEL: Record<CardKind, string> = {
   landscape: 'Landscape',
   special: 'Special',
   route: 'Route',
+  boss: 'Boss',
 };
 const KIND_HINT: Record<CardKind, string> = {
   trail: 'Goes on the trail itself.',
@@ -33,6 +34,7 @@ const KIND_HINT: Record<CardKind, string> = {
   landscape: 'Goes on any open snow.',
   special: 'Goes on a tile you already placed.',
   route: 'Goes on the trail where there is a clear line straight up (lift) or down (chute) to more trail.',
+  boss: 'Goes on the trail. Assembled from three intel fragments.',
 };
 const ROUTE_NAME = { lift: 'Chairlift', chute: 'Chute' } as const;
 const STANCE_TEXT: Record<Stance, string> = {
@@ -201,6 +203,7 @@ export class RunUi {
     this.text('run-cash', formatCash(st.cash));
     this.text('run-intel', String(st.intel));
     this.text('run-scrap', String(st.scrap));
+    this.text('run-frag', st.routes.some((r) => r.kind === 'lift') ? `${st.fragments}/3` : 'build a lift');
     document.querySelectorAll<HTMLButtonElement>('.tb.speed button').forEach((b) =>
       b.classList.toggle('on', Number(b.dataset.speed) === speed),
     );

@@ -6,6 +6,7 @@ import { BUILDINGS, type BuildingId } from './game/lodge';
 import { cardArtUrl } from './render/art/cardArt';
 import { sceneStill } from './render/art/lodgeScene';
 import { scaled } from './render/art/pixel';
+import { portraitUrl, type PortraitId } from './render/art/portraits';
 
 const root = document.getElementById('gallery')!;
 
@@ -34,3 +35,9 @@ section(
 const still = (built: BuildingId[]) => scaled(sceneStill(built), 3);
 section('Lodge scene, nothing built (3x)', [{ label: 'Fresh lodge', el: still([]) }]);
 section('Lodge scene, everything built (3x)', [{ label: 'Fully built', el: still(BUILDINGS.map((b) => b.id)) }]);
+
+const portraitIds: PortraitId[] = ['hero', 'baron', 'widow', 'yetiKing', 'kickback'];
+section(
+  'Portraits (4x)',
+  portraitIds.map((id) => ({ label: id, el: img(portraitUrl(id, 4)) })),
+);

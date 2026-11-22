@@ -3,7 +3,8 @@
 
 import { Sfx } from '../audio/sfx';
 import { CARDS } from '../game/cards';
-import { RATINGS } from '../game/enemies';
+import { ENEMIES, RATINGS, type BossKind } from '../game/enemies';
+import { portraitUrl } from '../render/art/portraits';
 import { bankRun, bonusesFor, build, deckFor, toggleCard, type BuildingId } from '../game/lodge';
 import { Run, type Command, type RunEvent } from '../game/run';
 import type { CardId } from '../game/cards';
@@ -114,6 +115,7 @@ export class App {
       // Embeds may forbid this; the seed is on the lodge screen anyway.
     }
     this.runUi.banner(`${RATINGS[rating].name} · seed ${seed}`);
+    (document.getElementById('hero-portrait') as HTMLImageElement).src = portraitUrl('hero', 2);
   }
 
   private toLodge(): void {
@@ -332,8 +334,22 @@ export class App {
           this.sfx.alarm();
           break;
         case 'boss':
-          this.runUi.banner('The Avalanche Baron is coming down the mountain!');
-          this.sfx.alarm();
+          break;
+        case 'bossArrives':
+          if (e.kind === 'baron' || e.kind === 'widow' || e.kind === 'yetiKing' || e.kind === 'kickback') this.bossArrives(e.kind);
+          break;
+        case 'bossDown':
+          this.runUi.banner(`${ENEMIES[e.kind].name} is down! +$1,000 and the ${e.reward}.`);
+          this.sfx.fanfare();
+          this.renderer.shake = 1;
+          break;
+        case 'fragment':
+          this.runUi.pop(`+ intel fragment ${e.count}/3`, e.x, e.y - 1.6, 'red');
+          this.sfx.chime();
+          break;
+        case 'dossier':
+          this.runUi.banner(`Dossier assembled: ${ENEMIES[e.boss].name}. Place it on the trail to summon them.`);
+          this.sfx.chaChing();
           break;
         case 'discard':
           this.runUi.pop(`Hand full: burned ${CARDS[e.card].name}`, run.heroPos().x, run.heroPos().y - 1.4, 'loot');
@@ -364,15 +380,28 @@ export class App {
     }
   }
 
+  /** A boss's dossier stops the clock until you've read it. */
+  private bossArrives(kind: 'baron' | BossKind): void {
+    this.select(null);
+    const resume = this.speed > 0 ? this.speed : this.autoPaused ? this.resumeSpeed : 0;
+    this.loop.speed = 0;
+    this.speed = 0;
+    this.autoPaused = false;
+    this.sfx.alarm();
+    this.renderer.shake = 0.8;
+    this.overlays.showBoss(kind, () => this.setSpeed(resume || 1));
+  }
+
   private endRun(won: boolean): void {
     const run = this.run!;
     const st = run.state;
     this.select(null);
     this.overlays.hideTally();
+    this.overlays.hideBoss();
     if (!this.banked && st.payout) {
       this.banked = true;
       const before = this.profile.rating;
-      bankRun(this.profile, st.status, st.payout, st.rating);
+      bankRun(this.profile, st.status, st.payout, st.rating, st.record.bosses);
       if (this.profile.rating > before) this.unlockedRating = `Unlocked: ${RATINGS[this.profile.rating].name}`;
       saveProfile(this.profile);
     }
@@ -406,6 +435,13 @@ export class App {
       if (e.target instanceof HTMLInputElement) return;
       const run = this.run;
       if (!run) return;
+      if (this.overlays.bossOpen) {
+        if (e.code === 'Enter' || e.code === 'Space' || e.code === 'Escape') {
+          e.preventDefault();
+          this.overlays.hideBoss();
+        }
+        return;
+      }
       if (e.code === 'Enter' && this.overlays.tallyOpen) {
         e.preventDefault();
         this.rideAgain();

@@ -3,7 +3,11 @@
 
 import type { Ride } from './map';
 
-export type EnemyKind = 'guard' | 'sniper' | 'snowmobile' | 'yeti' | 'baron';
+export type BossKind = 'widow' | 'yetiKing' | 'kickback';
+export type EnemyKind = 'guard' | 'sniper' | 'snowmobile' | 'yeti' | 'baron' | BossKind;
+
+/** The bosses: the Baron (from the alert meter) and the three you summon with dossiers. */
+export const isBoss = (k: EnemyKind): boolean => k === 'baron' || k === 'widow' || k === 'yetiKing' || k === 'kickback';
 
 export interface EnemyDef {
   name: string;
@@ -31,6 +35,33 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   snowmobile: { name: 'Snowmobile Goon', hp: 22, damage: 5, interval: 1.2, range: 1.3, accuracy: 0.55, evasion: 0.1, chips: 35, speed: 2.3, intel: 0, scrap: 2, cardChance: 0.4, itemChance: 0.4 },
   yeti: { name: 'Yeti', hp: 60, damage: 9, interval: 1.8, range: 1.2, accuracy: 0.65, evasion: 0, chips: 90, speed: 0, intel: 3, scrap: 1, cardChance: 0.8, itemChance: 0.7 },
   baron: { name: 'The Avalanche Baron', hp: 300, damage: 7, interval: 0.8, range: 2, accuracy: 0.6, evasion: 0.1, chips: 600, speed: 2.2, intel: 20, scrap: 20, cardChance: 0, itemChance: 1 },
+  widow: { name: 'The Ice Widow', hp: 200, damage: 13, interval: 2.2, range: 3.4, accuracy: 0.75, evasion: 0.15, chips: 400, speed: 0, intel: 10, scrap: 6, cardChance: 1, itemChance: 0 },
+  yetiKing: { name: 'The Yeti King', hp: 340, damage: 15, interval: 2, range: 1.6, accuracy: 0.7, evasion: 0, chips: 500, speed: 0, intel: 10, scrap: 10, cardChance: 1, itemChance: 0 },
+  kickback: { name: 'Captain Kickback', hp: 170, damage: 6, interval: 0.6, range: 1.8, accuracy: 0.55, evasion: 0.25, chips: 450, speed: 2.9, intel: 10, scrap: 8, cardChance: 1, itemChance: 0 },
+};
+
+/** Who the bosses are, for their arrival. */
+export const BOSS_INFO: Record<'baron' | BossKind, { epithet: string; text: string; reward: string }> = {
+  baron: {
+    epithet: 'Master of the mountain',
+    text: 'Comes down from the summit in his snowcat and chases you round the mountain, following your switches.',
+    reward: 'Beat him to win the expedition, keep everything, and unlock the next trail rating.',
+  },
+  widow: {
+    epithet: 'Cold hands, colder aim',
+    text: 'Holds her tile and fires from over three tiles away. The trail around her has frozen to ice: fast, but it ruins your aim.',
+    reward: "Drops The Widow's Monocle: +15% crit chance, and crits hit for triple. Plus a $1,000 bounty.",
+  },
+  yetiKing: {
+    epithet: 'Long may he roar',
+    text: 'Holds his tile and hits like an avalanche up close. Every day he lives, another yeti comes down to the trail.',
+    reward: 'Drops the Yeti Pelt: +45 max HP, +1 regen, +3 defense. Plus a $1,000 bounty.',
+  },
+  kickback: {
+    epithet: 'Has never once used the brakes',
+    text: 'Laps the mountain on a rocket sled faster than you can tuck, spraying bullets, and follows your switches.',
+    reward: 'Drops the Getaway Sled: chained descents give +2 mult, and bailing out keeps 80%. Plus a $1,000 bounty.',
+  },
 };
 
 export interface Enemy {
