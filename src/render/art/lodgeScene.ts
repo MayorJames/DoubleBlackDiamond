@@ -1,14 +1,16 @@
-// The lodge as a pixel panorama: the mountain and its pistes, a working chairlift, the forest,
-// the lodge itself, and a plot for every building you can put up, which appears when you build
-// it. The static picture is drawn once per change; snow, smoke, chairs and blinking lights are
-// drawn over it each frame.
+// The ski town as a pixel panorama: the mountains and their pistes, a working chairlift, the
+// forest, the lodge itself, and a plot for every building you can put up, which appears when you
+// build it. The town grows with what you buy: the lodge gains a balcony, then a clock tower;
+// more townsfolk stroll the street and more skiers come down the pistes; and the sky echoes the
+// weather of your last expedition. The static picture is drawn once per change; snow, smoke,
+// chairs, people and blinking lights are drawn over it each frame.
 
-import type { BuildingId } from '../../game/lodge';
+import type { BuildingId, Profile } from '../../game/lodge';
 import { PIXELS } from '../sprites';
 import { bayer, noise, Px } from './pixel';
 import { cloud, flag, mountain, pine, range, sky, snowField } from './scenery';
 
-export const SCENE_W = 360;
+export const SCENE_W = 480;
 export const SCENE_H = 120;
 const B = 111; // ground line for the buildings
 
@@ -23,6 +25,9 @@ export const PLOTS: Record<BuildingId, { x: number; top: number; base?: number }
   avalancheControl: { x: 242, top: B - 22 },
   spyHq: { x: 282, top: B - 28 },
   rental: { x: 322, top: B - 22 },
+  terrainPark: { x: 356, top: B - 26 },
+  huntingLodge: { x: 390, top: B - 28 },
+  armory: { x: 424, top: B - 24 },
 };
 const PLOT_W = 30;
 
@@ -219,6 +224,62 @@ const BUILDINGS: Record<BuildingId, (px: Px, x: number) => void> = {
     px.line(x + 8, B - 18, x + 8, B - 28, 'k');
     px.set(x + 8, B - 29, 'r');
   },
+  terrainPark(px, x) {
+    // A quarter pipe with a red coping, a rail, and a row of flags.
+    px.poly(
+      [
+        [x + 1, B],
+        [x + 14, B],
+        [x + 14, B - 16],
+      ],
+      (i, j) => (i > x + 11 ? 's' : bayer(i, j, 3) ? 's' : 'w'),
+    );
+    px.line(x + 1, B, x + 14, B - 16, 'k');
+    px.rect(x + 14, B - 17, 2, 17, 'k');
+    px.rect(x + 13, B - 18, 4, 1, 'r');
+    px.rect(x + 18, B - 6, 12, 1, 'k');
+    px.rect(x + 18, B - 5, 12, 1, 'm');
+    for (const k of [19, 28]) px.rect(x + k, B - 5, 1, 5, 'k');
+    for (let k = 0; k < 5; k++) {
+      px.set(x + 17 + k * 3, B - 22 + (k % 2), 'k');
+      px.rect(x + 17 + k * 3, B - 21 + (k % 2), 2, 2, k % 2 ? 'k' : 'r');
+    }
+    px.line(x + 16, B - 23, x + 31, B - 21, 'd');
+  },
+  huntingLodge(px, x) {
+    // A log lodge with antlers over the door, and a kennel run beside it.
+    px.rect(x + 2, B - 15, 20, 15, (_i, j) => (j % 3 === 0 ? 'k' : j % 3 === 1 ? 'm' : 'd'));
+    px.rect(x + 2, B - 15, 1, 15, 'k');
+    px.rect(x + 21, B - 15, 1, 15, 'k');
+    roof(px, x, x + 24, B - 15, B - 24);
+    px.rect(x + 9, B - 8, 5, 8, 'k');
+    px.line(x + 8, B - 13, x + 6, B - 16, 'w');
+    px.line(x + 15, B - 13, x + 17, B - 16, 'w');
+    px.rect(x + 8, B - 12, 8, 1, 'w');
+    px.rect(x + 16, B - 11, 4, 3, 'r');
+    // The run: a fence and a doghouse.
+    px.rect(x + 23, B - 5, 9, 1, 'k');
+    for (const k of [23, 26, 29, 31]) px.rect(x + k, B - 6, 1, 6, 'k');
+    px.rect(x + 25, B - 4, 5, 4, 'd');
+    px.rect(x + 24, B - 6, 7, 2, 'r');
+  },
+  armory(px, x) {
+    // A squat stone strongroom: barred window, red door, crossed rifles on a sign.
+    px.rect(x + 2, B - 16, 24, 16, (i, j) => ((i + (Math.floor(j / 3) % 2) * 3) % 6 === 0 || j % 3 === 0 ? 'm' : 'l'));
+    px.rect(x + 2, B - 16, 1, 16, 'k');
+    px.rect(x + 25, B - 16, 1, 16, 'k');
+    px.rect(x + 1, B - 18, 26, 2, 'd');
+    px.rect(x + 1, B - 19, 26, 1, 'w');
+    for (let k = 0; k < 13; k += 3) px.rect(x + 2 + k * 2, B - 21, 3, 2, 'd');
+    px.rect(x + 16, B - 10, 6, 10, 'r');
+    px.rect(x + 16, B - 10, 6, 1, 'k');
+    px.set(x + 20, B - 5, 'k');
+    px.rect(x + 5, B - 12, 7, 5, 'k');
+    for (const k of [6, 8, 10]) px.rect(x + k, B - 12, 1, 5, 'm');
+    px.rect(x + 8, B - 16, 12, 4, 'w');
+    px.line(x + 9, B - 13, x + 18, B - 16, 'k');
+    px.line(x + 9, B - 16, x + 18, B - 13, 'k');
+  },
   rental(px, x) {
     // A shop with a striped awning, a window full of skis, and a rack outside.
     px.rect(x + 2, B - 13, 22, 13, 'w');
@@ -253,7 +314,7 @@ function plot(px: Px, x: number): void {
 
 // --- The static picture ----------------------------------------------------------------------
 
-function drawStatic(built: readonly BuildingId[]): HTMLCanvasElement {
+function drawStatic(built: readonly BuildingId[], stage = 0): HTMLCanvasElement {
   const px = new Px(SCENE_W, SCENE_H);
   sky(px, 0, 0, SCENE_W, 74, 's', 'w');
   cloud(px, 40, 14, 26, 1);
@@ -262,7 +323,9 @@ function drawStatic(built: readonly BuildingId[]): HTMLCanvasElement {
   range(px, 0, SCENE_W, 76, 34, 17);
   mountain(px, 60, 345, 98, 200, 6, { snow: 42, seed: 3, lean: 0.18 });
   mountain(px, -20, 150, 98, 70, 34, { snow: 18, seed: 8, lean: 0.25 });
+  mountain(px, 330, 520, 98, 438, 22, { snow: 26, seed: 5, lean: 0.2 });
   flag(px, 200, 6, 6);
+  cloud(px, 410, 18, 24, 4);
 
   // A groomed piste down the mountain.
   for (let k = 0; k < PISTE.length - 1; k++) {
@@ -298,7 +361,7 @@ function drawStatic(built: readonly BuildingId[]): HTMLCanvasElement {
   snowField(px, 0, 98, SCENE_W, SCENE_H - 98, 5);
   for (let x = 0; x < SCENE_W; x += 3) px.set(x, B + 4 + Math.round(Math.sin(x * 0.07) * 1.5), 's');
 
-  drawLodge(px);
+  drawLodge(px, stage);
   for (const id of Object.keys(PLOTS) as BuildingId[]) {
     const { x, base = B } = PLOTS[id];
     // Plots off the valley floor are drawn on the ground line, then lifted into place.
@@ -310,7 +373,10 @@ function drawStatic(built: readonly BuildingId[]): HTMLCanvasElement {
   return px.canvas();
 }
 
-function drawLodge(px: Px): void {
+/** How grand the lodge has become: 0 to start, 1 with a few buildings up, 2 with most. */
+export const lodgeStage = (built: number): number => (built >= 7 ? 2 : built >= 3 ? 1 : 0);
+
+function drawLodge(px: Px, stage = 0): void {
   // Walls of dark timber over a porch, under a great snowy A-frame roof.
   px.rect(136, B - 24, 56, 22, (i, j) => (j % 3 === 0 || i % 7 === 0 ? 'd' : 'm'));
   px.rect(136, B - 24, 1, 22, 'k');
@@ -353,6 +419,40 @@ function drawLodge(px: Px): void {
   text(px, 'LODGE', 155, B - 20);
   // Skis racked on the porch.
   for (let k = 0; k < 3; k++) px.line(131 + k * 2, B - 3, 131 + k * 2, B - 15, k === 1 ? 'r' : 'k');
+
+  if (stage >= 1) {
+    // A balcony across the front with red-and-white bunting, and flags on the eaves.
+    px.rect(134, B - 27, 60, 2, 'd');
+    px.rect(134, B - 28, 60, 1, 'k');
+    for (let x = 135; x < 194; x += 4) px.rect(x, B - 26, 1, 3, 'k');
+    for (let x = 136; x < 192; x += 2) px.set(x, B - 32 + Math.round(Math.abs(Math.sin((x - 136) * 0.21)) * 3), (x / 2) % 2 ? 'r' : 'w');
+    for (const fx of [127, 199]) {
+      px.rect(fx, B - 34, 1, 10, 'k');
+      px.rect(fx + 1, B - 34, 4, 3, 'r');
+    }
+  }
+  if (stage >= 2) {
+    // A clock tower on the ridge, with a bell and a weathervane.
+    px.rect(158, B - 70, 12, 14, 'w');
+    px.rect(158, B - 70, 1, 14, 'k');
+    px.rect(169, B - 70, 1, 14, 'k');
+    px.disc(164, B - 64, 3.5, 'k');
+    px.disc(164, B - 64, 2.5, 'w');
+    px.line(164, B - 64, 164, B - 66, 'k');
+    px.line(164, B - 64, 165, B - 64, 'r');
+    px.poly(
+      [
+        [156, B - 70],
+        [164, B - 80],
+        [172, B - 70],
+      ],
+      'r',
+    );
+    px.line(156, B - 70, 164, B - 80, 'k');
+    px.line(164, B - 80, 172, B - 70, 'k');
+    px.rect(164, B - 85, 1, 5, 'k');
+    px.rect(162, B - 84, 5, 1, 'k');
+  }
 }
 
 // --- The live scene --------------------------------------------------------------------------
@@ -365,8 +465,27 @@ interface Puff {
   life: number;
 }
 
+type Weather = 'clear' | 'whiteout' | 'night';
+
+/** A townsperson strolling the street: where, which way, how fast, and what they look like. */
+interface Walker {
+  x: number;
+  dir: 1 | -1;
+  speed: number;
+  coat: string;
+  skis: boolean;
+  y: number;
+}
+
 export class LodgeScene {
   private built: BuildingId[] = [];
+  private stage = 0;
+  private weather: Weather = 'clear';
+  private walkers: Walker[] = [];
+  /** 'width' fits the scene to its container's width; 'cover' fills the container, cropping. */
+  fit: 'width' | 'cover' = 'width';
+  private ox = 0;
+  private oy = 0;
   private base: HTMLCanvasElement | null = null;
   private readonly art: HTMLCanvasElement;
   private readonly actx: CanvasRenderingContext2D;
@@ -392,7 +511,28 @@ export class LodgeScene {
     const key = [...built].sort().join(',');
     if (this.base && key === [...this.built].sort().join(',')) return;
     this.built = [...built];
-    this.base = drawStatic(built);
+    this.stage = lodgeStage(built.length);
+    this.base = drawStatic(built, this.stage);
+    // More buildings, more people about town.
+    const want = 2 + Math.floor(built.length / 2);
+    while (this.walkers.length < want) {
+      const k = this.walkers.length;
+      this.walkers.push({
+        x: (k * 97) % SCENE_W,
+        dir: k % 2 ? -1 : 1,
+        speed: 6 + (k % 3) * 2.5,
+        coat: ['r', 'k', 'd', 'r', 'm', 'q'][k % 6],
+        skis: k % 3 === 0,
+        y: B + 3 + (k % 3) * 2,
+      });
+    }
+    this.walkers.length = want;
+  }
+
+  /** The whole town from the save: what's built, and the weather of the last expedition. */
+  setTown(p: Profile): void {
+    this.setBuilt(p.built);
+    this.weather = p.lastRun?.weather ?? 'clear';
   }
 
   /** A burst of snow over a building that just went up. */
@@ -407,7 +547,21 @@ export class LodgeScene {
   /** Fits the canvas to its container at a whole-number scale. */
   resize(): void {
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
-    const avail = (this.canvas.parentElement?.clientWidth ?? SCENE_W) * this.dpr;
+    const parent = this.canvas.parentElement;
+    if (this.fit === 'cover') {
+      // Fill the width (cropping a little at the sides if need be), stand on the bottom, and let
+      // the sky above carry on up the screen.
+      const w = Math.max(1, Math.round((parent?.clientWidth ?? SCENE_W) * this.dpr));
+      const h = Math.max(1, Math.round((parent?.clientHeight ?? SCENE_H) * this.dpr));
+      this.scale = Math.max(1, Math.ceil(w / SCENE_W));
+      while (this.scale > 1 && SCENE_H * this.scale > h * 0.8) this.scale--;
+      this.canvas.width = w;
+      this.canvas.height = h;
+      this.ox = Math.round((w - SCENE_W * this.scale) / 2);
+      this.oy = h - SCENE_H * this.scale;
+      return;
+    }
+    const avail = (parent?.clientWidth ?? SCENE_W) * this.dpr;
     this.scale = Math.max(1, Math.floor(avail / SCENE_W));
     this.canvas.width = SCENE_W * this.scale;
     this.canvas.height = SCENE_H * this.scale;
@@ -467,7 +621,7 @@ export class LodgeScene {
         disc(x + ph * 14 + Math.sin(t * 2 + k) * 1.5, y - ph * rise, 1 + ph * 3, k % 2 ? c1 : c2);
       }
     };
-    plume(184, B - 48, 6, 30, 's', 'l');
+    plume(184, B - 48, 6, 30, this.weather === 'night' ? 'm' : 's', this.weather === 'night' ? 'd' : 'l');
     if (this.built.includes('sauna')) plume(PLOTS.sauna.x + 19, B - 23, 4, 18, 'w', 's');
 
     // Chairs going up one cable and down the other.
@@ -514,16 +668,32 @@ export class LodgeScene {
       dot(x, B - 52, 'q');
     }
 
-    // A skier coming down the piste now and then.
-    const lap = (t / 14) % 1;
-    if (lap < 0.6) {
+    // Skiers coming down the piste: more of them as the town grows.
+    const skiers = 1 + Math.floor(this.built.length / 3);
+    for (let s = 0; s < skiers; s++) {
+      const lap = (t / 14 + s / skiers) % 1;
+      if (lap >= 0.6) continue;
       const f = (lap / 0.6) * (PISTE.length - 1);
       const k = Math.min(PISTE.length - 2, Math.floor(f));
       const u = f - k;
       const x = PISTE[k][0] + (PISTE[k + 1][0] - PISTE[k][0]) * u;
       const y = PISTE[k][1] + (PISTE[k + 1][1] - PISTE[k][1]) * u;
-      dot(x, y - 2, 'r', 1, 2);
+      dot(x, y - 2, s % 2 ? 'k' : 'r', 1, 2);
       dot(x - 1, y, 'k', 3, 1);
+    }
+
+    // Townsfolk strolling the street, some with skis on their shoulders.
+    for (const w of this.walkers) {
+      w.x += w.dir * w.speed * 0.016;
+      if (w.x > SCENE_W + 4) w.x = -4;
+      if (w.x < -4) w.x = SCENE_W + 4;
+      const step = Math.floor(t * 6 + w.x) % 2;
+      const x = Math.round(w.x);
+      dot(x, w.y - 6, 'k', 2, 2);
+      dot(x, w.y - 4, w.coat, 2, 3);
+      dot(x + (step ? 0 : 1), w.y - 1, 'k', 1, 1);
+      dot(x + (step ? 1 : 0), w.y - 1, 'k', 1, 1);
+      if (w.skis) dot(x - 2 + (w.dir > 0 ? 0 : 1), w.y - 8, 'd', 1, 7);
     }
 
     // Snow building celebrations.
@@ -549,22 +719,61 @@ export class LodgeScene {
       }
     }
 
-    // Falling snow over everything.
-    for (let k = 0; k < 90; k++) {
+    // The last expedition's weather: night darkens the sky and lights the windows; a whiteout
+    // thickens the snow.
+    if (this.weather === 'night') {
+      g.fillStyle = 'rgba(12,12,30,0.55)';
+      g.fillRect(0, 0, SCENE_W, SCENE_H);
+      for (let k = 0; k < 40; k++) dot((k * 71) % SCENE_W, (k * 29) % 60, Math.floor(t * 2 + k) % 9 ? 'w' : 'l');
+      for (const [wx, wy] of [
+        [140, B - 19],
+        [180, B - 19],
+      ])
+        dot(wx, wy, 'q', 8, 8);
+      g.fillStyle = 'rgba(229,32,46,0.35)';
+      g.fillRect(126, B - 2, 76, 6);
+    }
+    const flakes = this.weather === 'whiteout' ? 260 : 90;
+    for (let k = 0; k < flakes; k++) {
       const speed = 6 + (k % 5) * 3;
       const y = (k * 37 + t * speed) % (SCENE_H + 4);
-      const x = (k * 53 + Math.sin(t * 0.8 + k) * 3 + t * 2) % SCENE_W;
+      const x = (k * 53 + Math.sin(t * 0.8 + k) * 3 + t * (this.weather === 'whiteout' ? 14 : 2)) % SCENE_W;
       dot(x, y, k % 7 === 0 ? 's' : 'w', k % 11 === 0 ? 2 : 1, k % 11 === 0 ? 2 : 1);
+    }
+    if (this.weather === 'whiteout') {
+      g.fillStyle = 'rgba(255,255,255,0.28)';
+      g.fillRect(0, 0, SCENE_W, SCENE_H);
     }
 
     this.ctx.imageSmoothingEnabled = false;
-    this.ctx.drawImage(this.art, 0, 0, this.canvas.width, this.canvas.height);
+    if (this.fit === 'cover') {
+      // The sky above the scene: its top colour, the same weather, and big slow flakes.
+      const c = this.ctx;
+      const night = this.weather === 'night';
+      c.fillStyle = night ? '#24242c' : PIXELS.s;
+      c.fillRect(0, 0, this.canvas.width, Math.max(0, this.oy) + 1);
+      if (this.ox > 0) {
+        c.fillRect(0, 0, this.ox, this.canvas.height);
+        c.fillRect(this.canvas.width - this.ox, 0, this.ox, this.canvas.height);
+      }
+      c.drawImage(this.art, this.ox, this.oy, SCENE_W * this.scale, SCENE_H * this.scale);
+      const sz = this.scale;
+      const n = Math.round((this.canvas.width * Math.max(0, this.oy)) / (sz * sz * 220));
+      c.fillStyle = PIXELS.w;
+      for (let k = 0; k < n; k++) {
+        const speed = 5 + (k % 5) * 2.5;
+        const y = ((k * 53 + t * speed) * sz) % (this.oy + 4 * sz);
+        const x = ((k * 97 + Math.sin(t * 0.7 + k) * 3 + t * 2) * sz) % this.canvas.width;
+        const big = k % 9 === 0 ? 2 : 1;
+        c.fillRect(Math.round(x / sz) * sz, Math.round(y / sz) * sz, sz * big, sz * big);
+      }
+    } else this.ctx.drawImage(this.art, 0, 0, this.canvas.width, this.canvas.height);
   }
 }
 
 /** A still of the scene, for the gallery. */
 export function sceneStill(built: readonly BuildingId[]): HTMLCanvasElement {
-  return drawStatic(built);
+  return drawStatic(built, lodgeStage(built.length));
 }
 
 const ICON_W = 34;

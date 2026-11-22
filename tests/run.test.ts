@@ -241,15 +241,17 @@ describe('a run', () => {
 });
 
 describe('the lodge', () => {
-  it('buildings cost resources, unlock cards, and bosses unlock harder trails', () => {
+  it('buildings cost resources and unlock cards; expeditions earn course tiles, the Baron a black run sign', () => {
     const p = newProfile();
     expect(deckFor(p)).toEqual(STARTER_DECK);
     expect(build(p, 'patrolHut')).toBe(false);
-    bankRun(p, 'retreated', { cash: 1000, intel: 10, scrap: 0, fraction: 1 }, 0);
+    const trail = p.tiles.trail;
+    expect(bankRun(p, 'retreated', { cash: 1000, intel: 10, scrap: 0, fraction: 1 }, [], 5)).toEqual(['trail', 'trail']);
+    expect(p.tiles.trail).toBe(trail + 2);
     expect(build(p, 'patrolHut')).toBe(true);
     expect(deckFor(p)).toContain('cache');
     expect(p.cash).toBe(700);
-    bankRun(p, 'won', { cash: 0, intel: 0, scrap: 0, fraction: 1 }, 0);
-    expect(p.rating).toBe(1);
+    expect(bankRun(p, 'won', { cash: 0, intel: 0, scrap: 0, fraction: 1 }, ['widow'], 1)).toEqual(['gates', 'trail', 'trail', 'blackRun']);
+    expect(p.tiles.blackRun).toBe(1);
   });
 });

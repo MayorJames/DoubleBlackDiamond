@@ -3,7 +3,7 @@
 // the mountain itself: lifts and chutes that branch off the trail.
 
 import { MAP_H, MAP_W } from './constants';
-import { cell, isPath, isPiste, isRoadside, neighbours, nodeAt, routeCourse, type MountainMap, type RouteKind } from './map';
+import { cell, isPath, isPiste, isRoadside, neighbours, nodeAt, routeCourse, type MountainMap, type StraightRoute } from './map';
 
 export type CardId =
   | 'patrol'
@@ -25,6 +25,10 @@ export type CardId =
   | 'fieldHospital'
   | 'kennel'
   | 'mine'
+  | 'gates'
+  | 'tunnel'
+  | 'checkpoint'
+  | 'blackRun'
   | 'chairlift'
   | 'chute'
   | 'whiteout'
@@ -112,6 +116,28 @@ export const CARDS: Record<CardId, CardDef> = {
   ),
   kennel: def('kennel', 'Kennel', 'roadside', 2, 1, 40, 'Every descent, 2-3 hounds chase you down the mountain. Fast, fragile, and they bite.', 'Who let them out?'),
   mine: def('mine', 'Mine', 'trail', 0, 0, 0, "Planted by a sapper. Hits hard when you ski over it, unless you're airborne.", 'Tick. Tick.'),
+  gates: def('gates', 'Slalom Gates', 'trail', 2, 1, 45, 'Tuck through for +0.5 mult and 10 chips; any other way, just the chips.', 'Red, blue, red, blue, tree.'),
+  tunnel: def('tunnel', 'Snow Tunnel', 'trail', 1, 1, 60, "Inside, nobody can see anybody: you can't be shot and you can't shoot. +6 chips.", 'Dark, quiet, and full of icicles.'),
+  checkpoint: def(
+    'checkpoint',
+    'Checkpoint',
+    'trail',
+    2,
+    2,
+    35,
+    'A guard now, and 1-3 more every descent (up to 3 here). Built on your mountain, it makes the mountain harder and its bounties richer.',
+    'Show your lift pass.',
+  ),
+  blackRun: def(
+    'blackRun',
+    'Black Run Sign',
+    'trail',
+    0,
+    0,
+    0,
+    'Experts only: each sign on your mountain makes it a step harder, with tougher enemies and richer bounties. Tuck past for 15 chips and +0.3 mult.',
+    'You were warned.',
+  ),
   avalanche: def('avalanche', 'Avalanche', 'special', 1, 0, 40, 'Wipes out a placed tile and everything on and around it.', 'Not the snow you ordered.'),
   chairlift: def(
     'chairlift',
@@ -180,7 +206,7 @@ export const BOSS_OF: Partial<Record<CardId, 'widow' | 'yetiKing' | 'kickback'>>
 export const MAX_LIFTS = 2;
 
 /** The kind of route a route card builds. */
-export const ROUTE_OF: Partial<Record<CardId, RouteKind>> = { chairlift: 'lift', chute: 'chute' };
+export const ROUTE_OF: Partial<Record<CardId, StraightRoute>> = { chairlift: 'lift', chute: 'chute' };
 
 export const CARD_IDS = Object.keys(CARDS) as CardId[];
 

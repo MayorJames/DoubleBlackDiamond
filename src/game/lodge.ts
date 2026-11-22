@@ -5,10 +5,23 @@
 
 import type { CardId } from './cards';
 import type { BossKind } from './enemies';
+import { COURSE_TILES, newPlan, STARTING_TILES, type CourseTile, type MountainPlan, type TileStock } from './mountain';
 import type { Payout, RunStatus } from './run';
 import { NO_BONUSES, type LodgeBonuses } from './stats';
 
-export type BuildingId = 'weatherStation' | 'trailCrew' | 'patrolHut' | 'gondola' | 'radio' | 'spyHq' | 'rental' | 'sauna' | 'avalancheControl';
+export type BuildingId =
+  | 'weatherStation'
+  | 'trailCrew'
+  | 'patrolHut'
+  | 'gondola'
+  | 'radio'
+  | 'spyHq'
+  | 'rental'
+  | 'sauna'
+  | 'avalancheControl'
+  | 'huntingLodge'
+  | 'terrainPark'
+  | 'armory';
 
 export interface Building {
   id: BuildingId;
@@ -19,15 +32,18 @@ export interface Building {
 }
 
 export const BUILDINGS: Building[] = [
-  { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute card: a steep shortcut straight down the mountain.', unlocks: ['chute'] },
+  { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute card, and sells chute and tunnel tiles for your mountain.', unlocks: ['chute'] },
   { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache and Powder Field cards, and the Field Hospital: a turncoat medic for the other side.', unlocks: ['cache', 'powder', 'fieldHospital'] },
-  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest, Snowmobile Garage and Kennel. More danger, more loot.', unlocks: ['sniper', 'garage', 'kennel'] },
-  { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks the Chairlift, Kicker and Ice Sheet cards.', unlocks: ['chairlift', 'kicker', 'ice'] },
-  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak, Avalanche, Yeti Cave and Demo Shack cards.', unlocks: ['peak', 'avalanche', 'yetiCave', 'demoShack'] },
+  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest and Snowmobile Garage. More danger, more loot.', unlocks: ['sniper', 'garage'] },
+  { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks the Chairlift, Kicker and Ice Sheet cards, and sells lift tiles for your mountain.', unlocks: ['chairlift', 'kicker', 'ice'] },
+  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak, Avalanche and Demo Shack cards.', unlocks: ['peak', 'avalanche', 'demoShack'] },
   { id: 'weatherStation', name: 'Weather Station', cost: { cash: 600, intel: 5, scrap: 4 }, text: 'Unlocks the Whiteout and Night weather cards.', unlocks: ['whiteout', 'night'] },
   { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks the Safehouse card, gadget drops and a second gadget slot.', unlocks: ['safehouse'] },
   { id: 'rental', name: 'Rental Shop', cost: { cash: 700, intel: 0, scrap: 10 }, text: '+10% speed, and better gear drops.', unlocks: [] },
   { id: 'sauna', name: 'Sauna', cost: { cash: 800, intel: 6, scrap: 6 }, text: '+25% max HP.', unlocks: [] },
+  { id: 'terrainPark', name: 'Terrain Park', cost: { cash: 450, intel: 0, scrap: 5 }, text: 'Unlocks the Slalom Gates, Snow Tunnel and Checkpoint cards.', unlocks: ['gates', 'tunnel', 'checkpoint'] },
+  { id: 'huntingLodge', name: 'Hunting Lodge', cost: { cash: 650, intel: 4, scrap: 4 }, text: 'Unlocks the Kennel and Yeti Cave cards: fast hounds and big, rich yetis.', unlocks: ['kennel', 'yetiCave'] },
+  { id: 'armory', name: 'Armory', cost: { cash: 850, intel: 6, scrap: 8 }, text: 'You head out with a better pistol, and gear drops a grade better.', unlocks: [] },
 ];
 
 /** Cards you own from the start. */
@@ -43,7 +59,7 @@ export interface Profile {
   intel: number;
   scrap: number;
   built: BuildingId[];
-  /** Highest trail rating unlocked (0 = Bunny Hill). */
+  /** Old saves: the highest trail rating unlocked. Now unused (difficulty comes from the mountain). */
   rating: number;
   runs: number;
   bossesBeaten: number;
@@ -52,9 +68,14 @@ export interface Profile {
   deck: CardId[];
   /** Dossier bosses you have beaten, at least once each. */
   trophies: BossKind[];
+  /** Your home mountain, and the course tiles you have to build it with. */
+  mountain: MountainPlan;
+  tiles: TileStock;
+  /** The last expedition's weather and how it ended, for the town to echo. */
+  lastRun: { weather: 'clear' | 'whiteout' | 'night'; status: RunStatus } | null;
 }
 
-export const newProfile = (): Profile => ({
+export const newProfile = (seed = 'FIRSTRUN'): Profile => ({
   version: 1,
   cash: 0,
   intel: 0,
@@ -66,6 +87,9 @@ export const newProfile = (): Profile => ({
   bestRun: 0,
   deck: [...STARTER_DECK],
   trophies: [],
+  mountain: newPlan(seed),
+  tiles: { ...STARTING_TILES },
+  lastRun: null,
 });
 
 /** Every card your buildings have unlocked, starter cards first. */
@@ -101,9 +125,10 @@ export function bonusesFor(p: Profile): LodgeBonuses {
     ...NO_BONUSES,
     maxHpPct: has('sauna') ? 0.25 : 0,
     speedPct: has('rental') ? 0.1 : 0,
-    rarityBoost: has('rental') ? 0.1 : 0,
+    rarityBoost: (has('rental') ? 0.1 : 0) + (has('armory') ? 0.1 : 0),
     gadgetSlots: has('spyHq') ? 2 : 1,
     gadgetDrops: has('spyHq'),
+    armory: has('armory'),
   };
 }
 
@@ -124,16 +149,45 @@ export function build(p: Profile, id: BuildingId): boolean {
   return true;
 }
 
-/** Bank an expedition's payout. Beating the Baron on your top rating unlocks the next one. */
-export function bankRun(p: Profile, status: RunStatus, payout: Payout, rating: number, bosses: readonly BossKind[] = []): void {
+/** The special tile each dossier boss leaves behind. */
+const BOSS_TILE: Record<BossKind, CourseTile> = { widow: 'gates', yetiKing: 'tunnel', kickback: 'jump' };
+
+/**
+ * Bank an expedition's payout, and the course tiles it earned: a trail tile for every two laps
+ * (four at most), a special tile for each dossier boss, and for beating the Baron two more trail
+ * tiles and a Black Run sign. Returns the tiles earned.
+ */
+export function bankRun(p: Profile, status: RunStatus, payout: Payout, bosses: readonly BossKind[] = [], laps = 0): CourseTile[] {
   for (const b of bosses) if (!p.trophies.includes(b)) p.trophies.push(b);
   p.cash += payout.cash;
   p.intel += payout.intel;
   p.scrap += payout.scrap;
   p.runs++;
   p.bestRun = Math.max(p.bestRun, payout.cash);
+  const earned: CourseTile[] = [];
+  for (let k = 0; k < Math.min(4, Math.floor(laps / 2)); k++) earned.push('trail');
+  for (const b of bosses) earned.push(BOSS_TILE[b]);
   if (status === 'won') {
     p.bossesBeaten++;
-    if (rating === p.rating && p.rating < 3) p.rating++;
+    earned.push('trail', 'trail', 'blackRun');
   }
+  for (const t of earned) p.tiles[t]++;
+  return earned;
+}
+
+/** Whether town will sell you a course tile right now. */
+export function canBuyTile(p: Profile, tile: CourseTile): boolean {
+  const info = COURSE_TILES[tile];
+  if (!info.price || (info.needs && !p.built.includes(info.needs))) return false;
+  return p.cash >= info.price.cash && p.intel >= info.price.intel && p.scrap >= info.price.scrap;
+}
+
+export function buyTile(p: Profile, tile: CourseTile): boolean {
+  if (!canBuyTile(p, tile)) return false;
+  const price = COURSE_TILES[tile].price!;
+  p.cash -= price.cash;
+  p.intel -= price.intel;
+  p.scrap -= price.scrap;
+  p.tiles[tile]++;
+  return true;
 }

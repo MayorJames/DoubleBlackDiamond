@@ -1,7 +1,7 @@
 // The lap tally at the lodge (Balatro's scoring moment, plus the vision's "Ride again?") and
 // the end-of-expedition result.
 
-import { BOSS_INFO, ENEMIES, RATINGS, type BossKind } from '../game/enemies';
+import { BOSS_INFO, difficultyMods, ENEMIES, RATINGS, ratingOf, type BossKind } from '../game/enemies';
 import { portraitUrl } from '../render/art/portraits';
 import type { HandLine, Payout, RunStatus } from '../game/run';
 import { formatCash } from './runUi';
@@ -110,7 +110,7 @@ export class Overlays {
     $('tally').classList.add('hidden');
   }
 
-  showResult(status: RunStatus, payout: Payout, rating: number, record: [string, string][], unlocked: string | null): void {
+  showResult(status: RunStatus, payout: Payout, difficulty: number, record: [string, string][], unlocked: string | null): void {
     const titles: Record<RunStatus, [string, string]> = {
       retreated: ['Called it a day', 'Home for cocoa with everything you carried.'],
       won: ['Baron defeated!', 'The Avalanche Baron is snow angel material. Everything is yours.'],
@@ -120,8 +120,9 @@ export class Overlays {
       lodge: ['', ''],
     };
     const [title, sub] = titles[status];
+    const pay = difficultyMods(difficulty).payout;
     $('result-title').textContent = title;
-    $('result-sub').textContent = `${sub}${RATINGS[rating].payout !== 1 ? ` ${RATINGS[rating].name} bounties pay x${RATINGS[rating].payout}.` : ''}`;
+    $('result-sub').textContent = `${sub} ${RATINGS[ratingOf(difficulty)].name}: bounties paid x${pay.toFixed(2)}.`;
     $('result-pay').innerHTML = [
       ['Cash', formatCash(payout.cash)],
       ['Intel', String(payout.intel)],

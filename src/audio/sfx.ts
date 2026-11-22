@@ -64,6 +64,15 @@ export class Sfx {
     return this.muted;
   }
 
+  get isMuted(): boolean {
+    return this.muted;
+  }
+
+  set mute(on: boolean) {
+    this.muted = on;
+    this.setVolume(this.volume);
+  }
+
   /**
    * Ambience each frame: `speed` is 0..1.5 (how fast the skier is going), `scrape` is 0..1
    * (snowplowing), and `active` is false at the lodge, when paused, or in menus.

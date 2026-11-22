@@ -39,9 +39,11 @@ export interface LodgeBonuses {
   rarityBoost: number;
   gadgetSlots: number;
   gadgetDrops: boolean;
+  /** The Armory: a better starting pistol. */
+  armory: boolean;
 }
 
-export const NO_BONUSES: LodgeBonuses = { maxHpPct: 0, speedPct: 0, rarityBoost: 0, gadgetSlots: 1, gadgetDrops: false };
+export const NO_BONUSES: LodgeBonuses = { maxHpPct: 0, speedPct: 0, rarityBoost: 0, gadgetSlots: 1, gadgetDrops: false, armory: false };
 
 export type Equipment = Record<Slot, Item | null>;
 

@@ -51,7 +51,7 @@ export const BOSS_INFO: Record<'baron' | BossKind, { epithet: string; text: stri
   baron: {
     epithet: 'Master of the mountain',
     text: 'Comes down from the summit in his snowcat and chases you round the mountain, following your switches.',
-    reward: 'Beat him to win the expedition, keep everything, and unlock the next trail rating.',
+    reward: 'Beat him to win the expedition, keep everything, and earn a Black Run sign to make your mountain harder (and richer).',
   },
   widow: {
     epithet: 'Cold hands, colder aim',
@@ -88,17 +88,31 @@ export interface Enemy {
   ability?: number;
 }
 
-/** Stat multiplier for an enemy's level (the descent it arrived on) and the trail rating. */
-export const levelScale = (level: number, rating: number) => ({
-  hp: (1 + 0.3 * (level - 1)) * RATINGS[rating].enemy,
-  damage: (1 + 0.2 * (level - 1)) * RATINGS[rating].enemy,
+/** Stat multiplier for an enemy's level (the descent it arrived on) and the mountain's difficulty. */
+export const levelScale = (level: number, difficulty: number) => ({
+  hp: (1 + 0.3 * (level - 1)) * difficultyMods(difficulty).enemy,
+  damage: (1 + 0.2 * (level - 1)) * difficultyMods(difficulty).enemy,
   chips: 1 + 0.25 * (level - 1),
 });
 
-/** Trail ratings, the difficulty ladder. Clearing one (beating the boss) unlocks the next. */
+/**
+ * The trail ratings: names for bands of difficulty. Difficulty itself is a number that comes
+ * from the mountain you build (black run signs, checkpoints, chutes, more trail), 0 to 4.
+ */
 export const RATINGS = [
-  { name: 'Bunny Hill', enemy: 0.8, payout: 0.75, boss: 18 },
-  { name: 'Blue Square', enemy: 1, payout: 1, boss: 22 },
-  { name: 'Black Diamond', enemy: 1.3, payout: 1.4, boss: 26 },
-  { name: 'Double Black Diamond', enemy: 1.7, payout: 2, boss: 30 },
+  { name: 'Bunny Hill', symbol: '●' },
+  { name: 'Blue Square', symbol: '■' },
+  { name: 'Black Diamond', symbol: '◆' },
+  { name: 'Double Black Diamond', symbol: '◆◆' },
 ];
+
+export const MAX_DIFFICULTY = 4;
+
+/** Which rating a difficulty falls in. */
+export const ratingOf = (difficulty: number): number => Math.max(0, Math.min(3, Math.floor(difficulty)));
+
+/** What difficulty does: tougher enemies, bigger bounties, and the Baron needs more provoking. */
+export const difficultyMods = (difficulty: number) => {
+  const d = Math.max(0, Math.min(MAX_DIFFICULTY, difficulty));
+  return { enemy: 0.8 + 0.3 * d, payout: 0.75 + 0.42 * d, boss: Math.round(18 + 4 * d) };
+};

@@ -1,19 +1,23 @@
-// Wires everything: the lodge hub, an expedition (Run), the renderer, the UI, input and sound.
-// The run only changes through commands; everything else reads it.
+// Wires everything: the start and rules pages, the play page's three tabs (the town, the
+// mountain, the ski loops), an expedition (Run), the renderers, the UI, input and sound. The run
+// only changes through commands; everything else reads it.
 
 import { Music } from '../audio/music';
 import { Sfx } from '../audio/sfx';
-import { CARDS } from '../game/cards';
-import { ENEMIES, RATINGS, type BossKind } from '../game/enemies';
-import { portraitUrl } from '../render/art/portraits';
-import { bankRun, bonusesFor, build, deckFor, toggleCard, type BuildingId } from '../game/lodge';
+import { CARDS, type CardId } from '../game/cards';
+import { ENEMIES, RATINGS, ratingOf, type BossKind } from '../game/enemies';
+import { bankRun, bonusesFor, build, buyTile, deckFor, toggleCard, type BuildingId } from '../game/lodge';
+import { clearPlan, COURSE_TILES, runSetup, type CourseTile } from '../game/mountain';
 import { Run, type Command, type RunEvent } from '../game/run';
-import type { CardId } from '../game/cards';
 import type { Stance } from '../game/stats';
+import { LodgeScene } from '../render/art/lodgeScene';
+import { portraitUrl } from '../render/art/portraits';
 import { MapRenderer, type Selection } from '../render/mapRenderer';
-import { LodgeUi } from '../ui/lodgeUi';
+import { MountainUi } from '../ui/mountainUi';
 import { Overlays } from '../ui/overlays';
+import { Pages, type Screen, type View } from '../ui/pages';
 import { formatCash, RunUi } from '../ui/runUi';
+import { TownUi } from '../ui/townUi';
 import { FixedLoop } from './loop';
 import { loadSettings, saveSettings } from './settings';
 import { loadProfile, saveProfile } from './storage';
@@ -38,12 +42,15 @@ function seedFromUrl(): string | null {
 }
 
 export class App {
-  private readonly profile = loadProfile();
+  private readonly profile = loadProfile(seedFromUrl() ?? randomSeed());
   private readonly settings = loadSettings();
   private run: Run | null = null;
   private readonly renderer: MapRenderer;
   private readonly runUi: RunUi;
-  private readonly lodgeUi: LodgeUi;
+  private readonly townUi: TownUi;
+  private readonly mountainUi: MountainUi;
+  private readonly pages: Pages;
+  private readonly startScene = new LodgeScene(document.getElementById('start-scene') as HTMLCanvasElement);
   private readonly overlays: Overlays;
   private readonly sfx = new Sfx();
   private readonly music = new Music(this.sfx);
@@ -53,12 +60,14 @@ export class App {
   private resumeSpeed = 1;
   private autoPaused = false;
   private speed = 1;
+  /** The speed the slopes were at when you left the Ski Loops tab, restored when you come back. */
+  private awaySpeed: number | null = null;
   /** Positions before the last tick, to interpolate between ticks. */
   private prevHero = { x: 0, y: 0 };
   private readonly prevChasers = new Map<number, { x: number; y: number }>();
   private elapsed = 0;
   private banked = false;
-  private unlockedRating: string | null = null;
+  private earnedTiles: CourseTile[] = [];
 
   constructor() {
     this.renderer = new MapRenderer(this.canvas);
@@ -73,97 +82,210 @@ export class App {
         bail: () => this.command({ type: 'bail' }),
         buy: (i) => this.command({ type: 'buy', offer: i }),
         reroll: () => this.command({ type: 'reroll' }),
-        settingsChanged: () => saveSettings(this.settings),
+        settingsChanged: () => this.settingsChanged(),
       },
       this.renderer,
       this.settings,
     );
-    this.lodgeUi = new LodgeUi({
+    this.townUi = new TownUi({
       build: (id) => this.build(id),
       toggleCard: (id) => this.toggleCard(id),
-      start: (rating, seed) => this.startRun(rating, seed),
-      newSeed: randomSeed,
+      buyTile: (t) => this.buyTile(t),
     });
+    this.mountainUi = new MountainUi({
+      changed: () => {
+        saveProfile(this.profile);
+        this.sfx.unlock();
+        this.sfx.place();
+        this.townUi.render(this.profile, !!this.run);
+      },
+      start: () => this.startRun(),
+      newSeed: randomSeed,
+      reseed: (seed) => this.reseed(seed),
+    });
+    this.pages = new Pages(
+      {
+        screen: (s) => this.onScreen(s),
+        view: (v) => this.onView(v),
+        settingsChanged: () => this.settingsChanged(),
+      },
+      this.settings,
+    );
     this.overlays = new Overlays({
       rideAgain: () => this.rideAgain(),
       callIt: () => this.command({ type: 'retreat' }),
-      toLodge: () => this.toLodge(),
+      toLodge: () => this.toTown(),
     });
     this.loop = new FixedLoop(
       () => this.tick(),
       (alpha, dt) => this.frame(alpha, dt),
     );
-    this.lodgeUi.setSeed(seedFromUrl() ?? randomSeed());
-    this.lodgeUi.render(this.profile);
-    this.lodgeUi.scene.start();
+    this.startScene.fit = 'cover';
+    this.refreshHome();
     this.bindInput();
     this.loop.start();
-    // Browsers only allow sound after a gesture: start the lodge music on the first one.
+    this.pages.show('start');
+    // Browsers only allow sound after a gesture: start the music on the first one.
     window.addEventListener(
       'pointerdown',
       () => {
         this.sfx.unlock();
-        this.music.setMode(this.run ? 'run' : 'lodge');
+        this.applySound();
       },
       { once: true },
     );
   }
 
-  // --- Screens ------------------------------------------------------------------------------
+  // --- Pages and tabs -----------------------------------------------------------------------
 
-  private startRun(rating: number, seed: string): void {
+  /** Everything that shows the save: the stash, the town, the mountain, the start page. */
+  private refreshHome(): void {
+    const p = this.profile;
+    const locked = !!this.run;
+    document.getElementById('p-cash')!.textContent = formatCash(p.cash);
+    document.getElementById('p-intel')!.textContent = String(p.intel);
+    document.getElementById('p-scrap')!.textContent = String(p.scrap);
+    this.townUi.render(p, locked);
+    this.mountainUi.render(p, locked);
+    document.getElementById('run-lock-mountain')!.classList.toggle('hidden', !locked);
+    this.startScene.setTown(p);
+    document.getElementById('start-record')!.textContent = p.runs
+      ? `${p.runs} expedition${p.runs === 1 ? '' : 's'} · ${p.bossesBeaten} Baron${p.bossesBeaten === 1 ? '' : 's'} beaten · your mountain: ${RATINGS[ratingOf(runSetup(p.mountain).difficulty ?? 0)].name}`
+      : 'Your first mountain is waiting.';
+    this.pages.setLive(locked);
+  }
+
+  private onScreen(s: Screen): void {
+    if (s === 'start') {
+      this.startScene.start();
+      this.startScene.resize();
+    } else this.startScene.stop();
+    if (s !== 'play') {
+      this.townUi.scene.stop();
+      this.mountainUi.hide();
+      this.leaveSlopes();
+    } else this.onView(this.pages.view);
+  }
+
+  private onView(v: View): void {
+    if (v === 'town') {
+      this.townUi.scene.start();
+      this.townUi.scene.resize();
+    } else this.townUi.scene.stop();
+    if (v === 'mountain') this.mountainUi.show();
+    else this.mountainUi.hide();
+    document.getElementById('play-screen')!.classList.toggle('on-slopes', v === 'loops' && !!this.run);
+    if (v === 'loops') {
+      document.getElementById('loops-empty')!.classList.toggle('hidden', !!this.run);
+      document.getElementById('run-screen')!.classList.toggle('hidden', !this.run);
+      if (this.run) {
+        this.renderer.resize();
+        if (this.awaySpeed !== null) this.setSpeed(this.awaySpeed);
+        this.awaySpeed = null;
+      }
+    } else this.leaveSlopes();
+    this.applySound();
+  }
+
+  /** Leaving the slopes mid-expedition pauses them until you come back. */
+  private leaveSlopes(): void {
+    if (!this.run || this.awaySpeed !== null || this.run.state.status !== 'riding') return;
+    this.select(null);
+    this.awaySpeed = this.speed || this.resumeSpeed || 1;
+    this.loop.speed = 0;
+    this.speed = 0;
+    this.autoPaused = false;
+  }
+
+  private settingsChanged(): void {
+    saveSettings(this.settings);
+    this.applySound();
+  }
+
+  /** Music for wherever you are, and the sound switches from settings. */
+  private applySound(): void {
+    this.sfx.mute = !this.settings.sound;
+    if (!this.settings.music) return this.music.setMode('off');
+    const onSlopes = this.pages.screen === 'play' && this.pages.view === 'loops' && !!this.run && !this.run.done;
+    const boss = onSlopes && this.run!.state.enemies.some((e) => e.kind === 'baron' || e.kind === 'widow' || e.kind === 'yetiKing' || e.kind === 'kickback');
+    this.music.setMode(boss ? 'boss' : onSlopes ? 'run' : 'lodge');
+  }
+
+  private startRun(): void {
+    if (this.run) return;
     this.sfx.unlock();
-    this.run = Run.create({ seed, rating, deck: deckFor(this.profile), bonuses: bonusesFor(this.profile) });
+    const setup = runSetup(this.profile.mountain);
+    this.run = Run.create({ ...setup, deck: deckFor(this.profile), bonuses: bonusesFor(this.profile) });
     this.banked = false;
-    this.unlockedRating = null;
+    this.earnedTiles = [];
     this.selection = null;
+    this.awaySpeed = null;
     this.runUi.reset();
     this.prevHero = this.run.heroPos();
     this.prevChasers.clear();
-    document.getElementById('lodge-screen')!.classList.add('hidden');
-    document.getElementById('run-screen')!.classList.remove('hidden');
-    this.lodgeUi.scene.stop();
-    this.renderer.resize();
     this.renderer.setRun(this.run);
+    this.refreshHome();
+    this.pages.go('play', 'loops');
     this.setSpeed(1);
-    this.music.setMode('run');
     try {
-      history.replaceState(history.state, '', `${location.pathname}${location.search}#${seed}`);
+      history.replaceState(history.state, '', `${location.pathname}${location.search}#${setup.seed}`);
     } catch {
-      // Embeds may forbid this; the seed is on the lodge screen anyway.
+      // Embeds may forbid this; the seed is on the mountain tab anyway.
     }
-    this.runUi.banner(`${RATINGS[rating].name} · seed ${seed}`);
+    this.runUi.banner(`${RATINGS[ratingOf(this.run.state.difficulty)].name} · seed ${setup.seed}`);
     (document.getElementById('hero-portrait') as HTMLImageElement).src = portraitUrl('hero', 2);
   }
 
-  private toLodge(): void {
+  private toTown(): void {
     this.overlays.hideResult();
     this.overlays.hideTally();
     this.run = null;
-    document.getElementById('run-screen')!.classList.add('hidden');
-    document.getElementById('lodge-screen')!.classList.remove('hidden');
-    this.lodgeUi.setSeed(randomSeed());
-    this.lodgeUi.render(this.profile);
-    this.lodgeUi.scene.start();
-    this.music.setMode('lodge');
+    this.awaySpeed = null;
+    this.refreshHome();
+    this.pages.go('play', 'town');
+    if (this.earnedTiles.length) {
+      const names = this.earnedTiles.map((t) => COURSE_TILES[t].name);
+      this.pages.toast(`Earned for your mountain: ${names.join(', ')}.`);
+    }
+  }
+
+  private reseed(seed: string): void {
+    if (this.run) return;
+    const built = this.profile.mountain.routes.length + this.profile.mountain.features.length;
+    if (built && !window.confirm('A new mountain clears everything you have built on this one. Every tile goes back in stock. Go ahead?')) {
+      this.refreshHome();
+      return;
+    }
+    clearPlan(this.profile.mountain, this.profile.tiles, seed);
+    saveProfile(this.profile);
+    this.refreshHome();
   }
 
   private build(id: BuildingId): void {
-    if (build(this.profile, id)) {
+    if (!this.run && build(this.profile, id)) {
       saveProfile(this.profile);
       this.sfx.unlock();
       this.sfx.chaChing();
-      this.lodgeUi.render(this.profile);
-      this.lodgeUi.scene.celebrate(id);
+      this.refreshHome();
+      this.townUi.scene.celebrate(id);
     }
   }
 
   private toggleCard(id: CardId): void {
-    if (toggleCard(this.profile, id)) {
+    if (!this.run && toggleCard(this.profile, id)) {
       saveProfile(this.profile);
       this.sfx.unlock();
       this.sfx.place();
-      this.lodgeUi.render(this.profile);
+      this.refreshHome();
+    }
+  }
+
+  private buyTile(t: CourseTile): void {
+    if (!this.run && buyTile(this.profile, t)) {
+      saveProfile(this.profile);
+      this.sfx.unlock();
+      this.sfx.chaChing();
+      this.refreshHome();
     }
   }
 
@@ -325,14 +447,16 @@ export class App {
           this.runUi.banner(
             r.kind === 'lift'
               ? 'Chairlift open! Ride it to chain another descent (+1 mult). Click the junction to ski past.'
-              : 'Chute open! A steep shortcut straight down. Click the junction to ski past.',
+              : r.kind === 'chute'
+                ? 'Chute open! A steep shortcut straight down. Click the junction to ski past.'
+                : 'Path open! Click the junction to switch it.',
           );
           this.sfx.chaChing();
           break;
         }
         case 'switch': {
           const r = run.state.routes[e.route];
-          this.runUi.pop(e.take ? (r.kind === 'lift' ? 'Lift: ride' : 'Chute: drop in') : 'Ski on', r.x + 0.5, r.y - 0.2, e.take ? 'red' : '');
+          this.runUi.pop(e.take ? ({ lift: 'Lift: ride', chute: 'Chute: drop in', trail: 'Path: take it' } as const)[r.kind] : 'Ski on', r.x + 0.5, r.y - 0.2, e.take ? 'red' : '');
           fx.ring(r.x * T + 8, r.y * T + 8);
           this.sfx.chipTick(e.take ? 6 : 2);
           break;
@@ -386,7 +510,7 @@ export class App {
           this.runUi.banner(`${ENEMIES[e.kind].name} is down! +$1,000 and the ${e.reward}.`);
           this.sfx.fanfare();
           this.renderer.shake = 1;
-          if (!run.state.enemies.some((x) => x.kind === 'baron' || x.kind === 'widow' || x.kind === 'yetiKing' || x.kind === 'kickback')) this.music.setMode('run');
+          if (!run.state.enemies.some((x) => x.kind === 'baron' || x.kind === 'widow' || x.kind === 'yetiKing' || x.kind === 'kickback')) this.applySound();
           break;
         case 'fragment':
           this.runUi.pop(`+ intel fragment ${e.count}/3`, e.x, e.y - 1.6, 'red');
@@ -445,7 +569,7 @@ export class App {
     this.autoPaused = false;
     this.sfx.alarm();
     this.renderer.shake = 0.8;
-    this.music.setMode('boss');
+    if (this.settings.music) this.music.setMode('boss');
     this.overlays.showBoss(kind, () => this.setSpeed(resume || 1));
   }
 
@@ -455,14 +579,14 @@ export class App {
     this.select(null);
     this.overlays.hideTally();
     this.overlays.hideBoss();
-    this.music.setMode('lodge');
     if (!this.banked && st.payout) {
       this.banked = true;
-      const before = this.profile.rating;
-      bankRun(this.profile, st.status, st.payout, st.rating, st.record.bosses);
-      if (this.profile.rating > before) this.unlockedRating = `Unlocked: ${RATINGS[this.profile.rating].name}`;
+      const laps = st.status === 'retreated' || st.status === 'won' ? st.lap : st.lap - 1;
+      this.earnedTiles = bankRun(this.profile, st.status, st.payout, st.record.bosses, laps);
+      this.profile.lastRun = { weather: st.weather?.kind ?? 'clear', status: st.status };
       saveProfile(this.profile);
     }
+    this.music.setMode(this.settings.music ? 'lodge' : 'off');
     if (won) this.sfx.fanfare();
     else if (st.status === 'wiped') {
       this.sfx.yardSale();
@@ -475,13 +599,14 @@ export class App {
     const record: [string, string][] = [
       ['Laps', String(st.status === 'retreated' || st.status === 'won' ? st.lap : st.lap - 1)],
       ['Descents', String(st.record.descents)],
-      ['Routes built', String(st.routes.length)],
+      ['Routes', String(st.routes.length)],
       ['Enemies down', String(st.record.kills)],
-      ['Best lap', formatCash(st.record.bestLap)],
+      ['Best lap bounty', formatCash(st.record.bestLap)],
       ['Cards bought', String(st.record.bought)],
       ['Cards placed', String(st.record.placed)],
     ];
-    setTimeout(() => this.overlays.showResult(st.status, st.payout!, st.rating, record, this.unlockedRating), won || st.status === 'wiped' ? 900 : 200);
+    const tiles = this.earnedTiles.length ? `Course tiles earned: ${this.earnedTiles.map((t) => COURSE_TILES[t].name).join(', ')}.` : null;
+    setTimeout(() => this.overlays.showResult(st.status, st.payout!, st.difficulty, record, tiles), won || st.status === 'wiped' ? 900 : 200);
   }
 
   // --- Input --------------------------------------------------------------------------------
@@ -490,8 +615,19 @@ export class App {
     window.addEventListener('resize', () => this.renderer.resize());
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement) return;
+      if (e.code === 'Escape' && this.pages.closeSettings()) return;
+      if (e.code === 'KeyM') {
+        this.settings.sound = !this.settings.sound;
+        this.pages.syncSettings();
+        this.settingsChanged();
+        return;
+      }
+      if (this.pages.screen === 'play' && this.pages.view === 'mountain' && e.code === 'Escape') {
+        this.mountainUi.cancel();
+        return;
+      }
       const run = this.run;
-      if (!run) return;
+      if (!run || this.pages.screen !== 'play' || this.pages.view !== 'loops') return;
       if (this.overlays.bossOpen) {
         if (e.code === 'Enter' || e.code === 'Space' || e.code === 'Escape') {
           e.preventDefault();
@@ -505,7 +641,7 @@ export class App {
         return;
       }
       if (this.overlays.resultOpen && e.code === 'Enter') {
-        this.toLodge();
+        this.toTown();
         return;
       }
       const i = STANCE_ORDER.indexOf(run.state.hero.stance);
@@ -536,9 +672,6 @@ export class App {
           break;
         case 'KeyR':
           this.flipNext();
-          break;
-        case 'KeyM':
-          this.sfx.toggleMute();
           break;
       }
     });

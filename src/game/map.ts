@@ -1,23 +1,30 @@
 // The mountain: a directed graph of path tiles on a grid, generated from the seed. It starts as
 // one loop (the lodge, the lift straight up to the summit, switchbacks back down) and grows as
-// you place route cards. A Chairlift climbs from a trail tile back up to the trail above it; a
-// Chute drops from a trail tile straight down to the trail below. Where a route branches off
-// there is a junction, and its switch decides which way the skier (and anything chasing them)
-// goes. The map is rebuilt from the seed and the routes, so it never needs saving.
+// you add routes. A lift climbs from a trail tile straight back up to the trail above it; a
+// chute drops straight down to the trail below; a trail path wanders over open snow in any
+// shape you lay it, and can head back uphill to trail you've already skied. Where a route
+// branches off there is a junction, and its switch decides which way the skier (and anything
+// chasing them) goes. A route that leads back to trail before its own junction is a loop-back:
+// taking it means another descent. The map is rebuilt from the seed and the routes, so it never
+// needs saving.
 
 import { MAP_H, MAP_W } from './constants';
 import { Rng } from './rng';
 
 export type PathKind = 'lodge' | 'lift' | 'summit' | 'trail' | 'chute';
 export type Dir = 'up' | 'down' | 'left' | 'right';
-export type RouteKind = 'lift' | 'chute';
+export type RouteKind = 'lift' | 'chute' | 'trail';
+/** The routes that run in a straight line: lifts up, chutes down. */
+export type StraightRoute = 'lift' | 'chute';
 
-/** A route card on the mountain. The switch (`take`) lives in the run state; the shape here. */
+/** A route on the mountain. The switch (`take`) lives in the run state; the shape here. */
 export interface RouteSpec {
   kind: RouteKind;
-  /** The trail tile it branches from: a lift's bottom station, a chute's lip. */
+  /** The trail tile it branches from: a lift's bottom station, a chute's lip, a path's fork. */
   x: number;
   y: number;
+  /** A trail path's open cells in order, then the cell of the path tile it joins. */
+  cells?: number[];
 }
 
 export interface Route extends RouteSpec {
@@ -43,6 +50,8 @@ export interface Segment {
   from: number;
   to: number;
   nodes: number[];
+  /** Whether it leads back to trail before its own junction: taking it is another descent. */
+  back: boolean;
 }
 
 export interface MountainMap {
@@ -56,6 +65,10 @@ export interface MountainMap {
   loopLength: number;
   lifts: Segment[];
   chutes: Segment[];
+  /** Trail paths you laid out. */
+  paths: Segment[];
+  /** Each route's segment by route index (null if it didn't fit and wasn't built). */
+  segments: (Segment | null)[];
 }
 
 /** Position on the mountain: travelling from node `at` to node `to`, fraction `f` of the way. */
@@ -120,17 +133,65 @@ export function generateMap(seed: string, routes: readonly RouteSpec[] = []): Mo
     liftX,
     summit: pts.findIndex((p) => p.kind === 'summit'),
     loopLength: n,
-    lifts: [{ route: -1, from: LODGE, to: 0, nodes: [] }],
+    lifts: [{ route: -1, from: LODGE, to: 0, nodes: [], back: false }],
     chutes: [],
+    paths: [],
+    segments: [],
   };
   map.lifts[0].to = map.summit;
   map.lifts[0].nodes = nodes.map((_, i) => i).filter((i) => nodes[i].kind === 'lift');
 
   routes.forEach((r, i) => {
-    const course = routeCourse(map, r.kind, r.x, r.y);
-    if (course) addRoute(map, i, r.kind, nodeAt(map, r.x, r.y), course);
+    const course = r.kind === 'trail' ? trailCourse(map, r.x, r.y, r.cells ?? []) : routeCourse(map, r.kind, r.x, r.y);
+    map.segments[i] = course ? addRoute(map, i, r.kind, nodeAt(map, r.x, r.y), course) : null;
   });
+  for (const seg of [...map.lifts.slice(1), ...map.chutes, ...map.paths]) seg.back = leadsBack(map, seg.to, seg.from);
   return map;
+}
+
+/** Whether following the main way on from `from` reaches `target` before the lodge. */
+function leadsBack(map: MountainMap, from: number, target: number): boolean {
+  let at = from;
+  for (let k = 0; k <= map.nodes.length; k++) {
+    if (at === target) return true;
+    if (at === LODGE) return false;
+    at = map.nodes[at].next[0];
+  }
+  return false;
+}
+
+/**
+ * Checks a trail path laid from the trail tile at (x, y): its open cells must run edge to edge
+ * over snow nobody has built on, and its last cell must be trail (or a chute) to join. Returns
+ * the cells it crosses and the node it joins, or null.
+ */
+export function trailCourse(
+  map: MountainMap,
+  x: number,
+  y: number,
+  cells: readonly number[],
+  blocked: (c: number) => boolean = () => false,
+): { cells: number[]; end: number } | null {
+  const start = nodeAt(map, x, y);
+  if (start < 0 || map.nodes[start].kind !== 'trail' || map.nodes[start].next.length > 1 || cells.length < 2) return null;
+  const open = cells.slice(0, -1);
+  let px = x;
+  let py = y;
+  const seen = new Set<number>();
+  for (const c of open) {
+    const cx = c % MAP_W;
+    const cy = Math.floor(c / MAP_W);
+    if (c < 0 || c >= MAP_W * MAP_H || Math.abs(cx - px) + Math.abs(cy - py) !== 1) return null;
+    if (map.index[c] >= 0 || seen.has(c) || blocked(c)) return null;
+    seen.add(c);
+    px = cx;
+    py = cy;
+  }
+  const last = cells[cells.length - 1];
+  if (Math.abs((last % MAP_W) - px) + Math.abs(Math.floor(last / MAP_W) - py) !== 1) return null;
+  const end = last >= 0 && last < MAP_W * MAP_H ? map.index[last] : -1;
+  if (end < 0 || end === start || !isPiste(map, end)) return null;
+  return { cells: open, end };
 }
 
 /**
@@ -142,7 +203,7 @@ export function generateMap(seed: string, routes: readonly RouteSpec[] = []): Mo
  */
 export function routeCourse(
   map: MountainMap,
-  kind: RouteKind,
+  kind: StraightRoute,
   x: number,
   y: number,
   blocked: (c: number) => boolean = () => false,
@@ -160,10 +221,10 @@ export function routeCourse(
   return null;
 }
 
-function addRoute(map: MountainMap, route: number, kind: RouteKind, start: number, course: { cells: number[]; end: number }): void {
+function addRoute(map: MountainMap, route: number, kind: RouteKind, start: number, course: { cells: number[]; end: number }): Segment {
   const ids = course.cells.map((c) => {
     const id = map.nodes.length;
-    map.nodes.push({ x: c % MAP_W, y: Math.floor(c / MAP_W), kind: kind === 'lift' ? 'lift' : 'chute', next: [], prev: [], junction: -1 });
+    map.nodes.push({ x: c % MAP_W, y: Math.floor(c / MAP_W), kind, next: [], prev: [], junction: -1 });
     map.index[c] = id;
     return id;
   });
@@ -173,7 +234,9 @@ function addRoute(map: MountainMap, route: number, kind: RouteKind, start: numbe
     map.nodes[chain[k + 1]].prev.push(chain[k]);
   }
   map.nodes[start].junction = route;
-  (kind === 'lift' ? map.lifts : map.chutes).push({ route, from: start, to: course.end, nodes: ids });
+  const seg: Segment = { route, from: start, to: course.end, nodes: ids, back: false };
+  (kind === 'lift' ? map.lifts : kind === 'chute' ? map.chutes : map.paths).push(seg);
+  return seg;
 }
 
 export const nodeAt = (map: MountainMap, x: number, y: number): number => (inBounds(x, y) ? map.index[cell(x, y)] : -1);

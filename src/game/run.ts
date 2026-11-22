@@ -4,7 +4,7 @@
 
 import { BOSS_OF, canPlace, CARDS, countAround, markDoubleBlacks, newTiles, ROUTE_OF, type CardId, type Tiles } from './cards';
 import { DT, HAND_SIZE, INVENTORY_SIZE, MAP_W, MAX_ENEMIES_PER_TILE } from './constants';
-import { ENEMIES, isBoss, levelScale, RATINGS, type BossKind, type Enemy, type EnemyKind } from './enemies';
+import { difficultyMods, ENEMIES, isBoss, levelScale, type BossKind, type Enemy, type EnemyKind } from './enemies';
 import { rollGadget, rollItem, STARTER_GUN, uniqueReward, type Item, type Slot } from './items';
 import {
   cell,
@@ -79,7 +79,8 @@ export interface Payout {
 export interface RunState {
   version: number;
   seed: string;
-  rating: number;
+  /** How hard the mountain is (from what's built on it), 0 to 4: see difficultyMods. */
+  difficulty: number;
   tick: number;
   rng: RngState;
   tiles: Tiles;
@@ -169,9 +170,19 @@ export type RunEvent =
   | { type: 'discard'; card: CardId }
   | { type: 'end'; status: RunStatus; payout: Payout };
 
+/** A special tile laid on the mountain before the run, as a card on that trail tile. */
+export interface Feature {
+  x: number;
+  y: number;
+  card: CardId;
+}
+
 export interface RunOptions {
   seed: string;
-  rating?: number;
+  difficulty?: number;
+  /** Routes already built on the mountain (from the mountain view), switches as set there. */
+  routes?: Route[];
+  features?: Feature[];
   deck: CardId[];
   bonuses?: LodgeBonuses;
 }
@@ -201,6 +212,7 @@ export const BOSS_BOUNTY = 1000;
 /** What enemy cards send at the start of each descent: inclusive ranges and chances. */
 export const SPAWNS = {
   patrol: [1, 2] as const,
+  checkpoint: [1, 3] as const,
   cabin: [0, 2] as const,
   garageSecond: 0.4,
   dbdYeti: 0.6,
@@ -238,6 +250,8 @@ export const ROUTE_TUNING = {
   steepMult: 0.2,
   /** Aim in a chute. */
   chuteAim: 0.85,
+  /** Tiles a second skating back uphill on a trail path. */
+  climb: 1.1,
 };
 
 const freshHand = (permanentMult: number): LapHand => ({ chips: 0, mult: 1 + permanentMult, combo: 0, lines: [] });
@@ -260,22 +274,22 @@ export class Run {
 
   static create(options: RunOptions): Run {
     const bonuses = options.bonuses ?? NO_BONUSES;
-    const rating = options.rating ?? 0;
+    const difficulty = options.difficulty ?? 0;
     const state: RunState = {
       version: RUN_VERSION,
       seed: options.seed,
-      rating,
+      difficulty,
       tick: 0,
       rng: hashSeed(`run:${options.seed}`),
       tiles: newTiles(),
-      routes: [],
+      routes: (options.routes ?? []).map((r) => ({ ...r, cells: r.cells ? [...r.cells] : undefined })),
       hero: { ride: { at: LODGE, to: 1, f: 0 }, hp: 0, stance: 'cruise', cooldown: 0, airborne: false },
       enemies: [],
       nextId: 1,
       hand: [],
       deck: [...options.deck],
       inventory: [],
-      equipment: { gun: STARTER_GUN(0), skis: null, goggles: null, jacket: null, gadget1: null, gadget2: null },
+      equipment: { gun: STARTER_GUN(0, bonuses.armory), skis: null, goggles: null, jacket: null, gadget1: null, gadget2: null },
       bonuses,
       lap: 1,
       descent: 1,
@@ -288,7 +302,7 @@ export class Run {
       lapBounty: 0,
       lapTime: 0,
       lapPar: 0,
-      boss: { meter: 0, max: RATINGS[rating].boss, spawned: false },
+      boss: { meter: 0, max: difficultyMods(difficulty).boss, spawned: false },
       lapHand: freshHand(0),
       permanentMult: 0,
       weather: null,
@@ -301,6 +315,11 @@ export class Run {
       payout: null,
     };
     const run = new Run(state);
+    for (const f of options.features ?? []) {
+      const i = nodeAt(run.map, f.x, f.y);
+      if (isPiste(run.map, i)) state.tiles[cell(f.x, f.y)] = { card: f.card, timer: 0, lastLap: -1, variant: null };
+    }
+    state.hero.ride.to = run.choose(LODGE);
     state.hero.hp = run.stats.maxHp;
     for (let i = 0; i < SHOP.startingHand; i++) run.drawCard();
     run.rollShop();
@@ -555,7 +574,7 @@ export class Run {
       st.tiles[c] = { card, timer: card === 'patrol' ? 2 : card === 'boulder' || card === 'peak' ? 4 : 3, lastLap: -1, variant: null };
       st.record.placed++;
       this.events.push({ type: 'placed', card, x, y });
-      if (card === 'patrol') this.spawn('guard', x, y, c);
+      if (card === 'patrol' || card === 'checkpoint') this.spawn('guard', x, y, c);
       if (card === 'sniper') this.spawn('sniper', x, y, c);
       if (card === 'demoShack') this.spawn('sapper', x, y, c);
       if (card === 'fieldHospital') this.spawn('medic', x, y, c);
@@ -660,7 +679,7 @@ export class Run {
     }
     // Bosses have fixed stats; everything else levels up with the descent it arrives on.
     const level = isBoss(kind) ? 1 : st.descent;
-    const scale = levelScale(level, st.rating);
+    const scale = levelScale(level, st.difficulty);
     const enemy: Enemy = {
       id: st.nextId++,
       kind,
@@ -749,8 +768,10 @@ export class Run {
       const x = c % MAP_W;
       const y = Math.floor(c / MAP_W);
       switch (t.card) {
-        case 'patrol': {
-          const n = rng.int(SPAWNS.patrol[0], SPAWNS.patrol[1] + 1);
+        case 'patrol':
+        case 'checkpoint': {
+          const [lo, hi] = t.card === 'patrol' ? SPAWNS.patrol : SPAWNS.checkpoint;
+          const n = rng.int(lo, hi + 1);
           for (let k = 0; k < n; k++) this.spawn('guard', x, y, c);
           break;
         }
@@ -851,7 +872,7 @@ export class Run {
     const map = this.map;
     let i = this.heroNode();
     if (i >= map.loopLength) {
-      const seg = [...map.lifts, ...map.chutes].find((s) => s.nodes.includes(i));
+      const seg = [...map.lifts, ...map.chutes, ...map.paths].find((s) => s.nodes.includes(i));
       i = seg ? seg.from : 0;
     }
     return i / map.loopLength;
@@ -866,7 +887,9 @@ export class Run {
     if (p.kind === 'summit') return 1.3;
     if (p.kind === 'lodge') return 1.2;
     if (p.kind === 'chute') return 3;
-    return dirOf(this.map, i, this.choose(i)) === 'down' ? 2.4 : 1.8;
+    const dir = dirOf(this.map, i, this.choose(i));
+    // Downhill is fast, traverses slower, and climbing back uphill on a path is a slow skate.
+    return dir === 'down' ? 2.4 : dir === 'up' ? ROUTE_TUNING.climb : 1.8;
   }
 
   /** Returns true when the skier just reached the lodge. */
@@ -893,8 +916,10 @@ export class Run {
         return true;
       }
       const next = this.choose(ride.at);
-      // Riding a lift partway down is a choice to chain another descent instead of going home.
-      if (this.map.nodes[next].kind === 'lift' && this.map.nodes[ride.at].kind !== 'lift') this.chain();
+      // Taking a route that leads back up the mountain (a lift, or a path that doubles back) is a
+      // choice to chain another descent instead of going home.
+      const here = this.map.nodes[ride.at];
+      if (here.junction >= 0 && next === here.next[1] && this.map.segments[here.junction]?.back) this.chain();
       ride.to = next;
       if (ride.f >= 0.5) this.enterTile(ride.to);
     }
@@ -936,7 +961,7 @@ export class Run {
         this.events.push({ type: 'mine', x: cx, y: cy, hit: false, damage: 0 });
         this.addChips('Mine jumped', SPECIALISTS.mineAirChips, 0, cx, cy);
       } else {
-        const damage = Math.max(1, Math.round(SPECIALISTS.mineDamage * levelScale(st.descent, st.rating).damage) - this.stats.defense);
+        const damage = Math.max(1, Math.round(SPECIALISTS.mineDamage * levelScale(st.descent, st.difficulty).damage) - this.stats.defense);
         st.hero.hp -= damage;
         if (!hasGadget(st.equipment, 'insurance')) st.lapHand.combo = 0;
         this.events.push({ type: 'mine', x: cx, y: cy, hit: true, damage });
@@ -953,6 +978,9 @@ export class Run {
         this.line('Steep', 0, ROUTE_TUNING.steepMult, false);
       }
       if (t?.card === 'moguls') this.addChips('Moguls', 12, st.hero.stance === 'tuck' ? 0.3 : 0, cx, cy);
+      if (t?.card === 'gates') this.addChips(st.hero.stance === 'tuck' ? 'Slalom' : 'Gates', 10, st.hero.stance === 'tuck' ? 0.5 : 0, cx, cy);
+      if (t?.card === 'tunnel') this.addChips('Tunnel', 6, 0, cx, cy);
+      if (t?.card === 'blackRun' && st.hero.stance === 'tuck') this.addChips('Black run', 15, 0.3, cx, cy);
       if (t?.card === 'kicker') {
         if (steep) this.addChips('Cliff drop', 50, 1, cx, cy);
         else this.addChips('Big air', 25, 0.5, cx, cy);
@@ -1127,6 +1155,8 @@ export class Run {
     const onIce = st.tiles[cell(tile.x, tile.y)]?.card === 'ice';
     const whiteout = st.weather?.kind === 'whiteout';
     const night = st.weather?.kind === 'night';
+    // In a snow tunnel nobody can see anybody.
+    const hidden = st.tiles[cell(tile.x, tile.y)]?.card === 'tunnel';
     const sight = whiteout ? WEATHER.whiteoutRange : 1;
     const terrainAim = (onIce ? 0.6 : 1) * (tile.kind === 'chute' ? ROUTE_TUNING.chuteAim : 1) * (night ? WEATHER.nightAim : 1);
 
@@ -1148,7 +1178,7 @@ export class Run {
     // The skier fires at the nearest enemy in range, on the move.
     const airhead = hasGadget(st.equipment, 'airhead');
     hero.cooldown -= DT;
-    if ((!hero.airborne || airhead) && hero.cooldown <= 0) {
+    if ((!hero.airborne || airhead) && !hidden && hero.cooldown <= 0) {
       let target: Enemy | null = null;
       let best = stats.range * sight;
       for (const e of st.enemies) {
@@ -1187,9 +1217,9 @@ export class Run {
         e.cooldown = Math.max(e.cooldown, def.interval * 0.4);
         continue;
       }
-      if (e.cooldown > 0) continue;
+      if (e.cooldown > 0 || hidden) continue;
       e.cooldown = def.interval * rng.range(0.9, 1.1);
-      const scale = levelScale(e.level, st.rating);
+      const scale = levelScale(e.level, st.difficulty);
       const base = { type: 'enemyShot' as const, enemy: e.id, kind: e.kind, fromX: e.x, fromY: e.y, toX: me.x, toY: me.y };
       if (hero.airborne) {
         this.events.push({ ...base, hit: false, damage: 0, air: true });
@@ -1212,11 +1242,11 @@ export class Run {
     e.hp -= amount;
     if (e.hp > 0) return;
     const def = ENEMIES[e.kind];
-    const scale = levelScale(e.level, st.rating);
+    const scale = levelScale(e.level, st.difficulty);
     const chips = Math.round(def.chips * scale.chips * (st.weather?.kind === 'whiteout' ? WEATHER.whiteoutChips : 1));
     st.record.kills++;
     st.lapKills++;
-    st.lapBounty += Math.round(def.bounty * scale.chips * RATINGS[st.rating].payout);
+    st.lapBounty += Math.round(def.bounty * scale.chips * difficultyMods(st.difficulty).payout);
     st.lapHand.combo++;
     this.events.push({ type: 'kill', enemy: e.id, kind: e.kind, x: e.x, y: e.y, chips });
     this.addChips(KILL_LINES[e.kind], chips, 0, e.x, e.y);

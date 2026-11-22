@@ -56,6 +56,10 @@ const TILE_SPRITES: Record<
   fieldHospital: 'fieldHospital',
   kennel: 'kennel',
   mine: 'mine',
+  gates: 'gates',
+  tunnel: 'tunnel',
+  checkpoint: 'checkpoint',
+  blackRun: 'blackRun',
 };
 
 const SPECIAL_SPRITES: Partial<Record<CardId, SpriteName>> = {
@@ -96,6 +100,10 @@ export interface FrameView {
   dt: number;
   selection: Selection | null;
   paused: boolean;
+  /** Drawn over the mountain, under the skier (the builder's guides). In art pixels. */
+  overlay?: (b: CanvasRenderingContext2D) => void;
+  /** Leave out enemies, the skier and effects: just the mountain. */
+  still?: boolean;
 }
 
 export class MapRenderer {
@@ -180,19 +188,22 @@ export class MapRenderer {
     this.drawJunctions(run);
     if (view.selection) this.drawSelection(run, view.selection);
     this.drawChairs(run, view);
+    view.overlay?.(b);
 
     // Entities, back to front.
     const actors: { y: number; draw: () => void }[] = [];
-    for (const e of run.state.enemies) {
-      const pos = e.ride ? (view.chasers.get(e.id) ?? e) : e;
-      actors.push({ y: pos.y, draw: () => this.drawEnemy(run, e, pos.x, pos.y, view.time) });
+    if (!view.still) {
+      for (const e of run.state.enemies) {
+        const pos = e.ride ? (view.chasers.get(e.id) ?? e) : e;
+        actors.push({ y: pos.y, draw: () => this.drawEnemy(run, e, pos.x, pos.y, view.time) });
+      }
+      const hp = view.hero;
+      actors.push({ y: hp.y + 0.01, draw: () => this.drawHero(run, view, hp.x, hp.y) });
     }
-    const hp = view.hero;
-    actors.push({ y: hp.y + 0.01, draw: () => this.drawHero(run, view, hp.x, hp.y) });
     actors.sort((a, c) => a.y - c.y);
     for (const a of actors) a.draw();
 
-    this.fx.draw(b);
+    if (!view.still) this.fx.draw(b);
     const weather = run.state.weather?.kind;
     if (weather === 'night') this.drawNight(run, view);
     this.fx.drawSnow(b);
@@ -415,10 +426,11 @@ export class MapRenderer {
   private drawTile(ctx: CanvasRenderingContext2D, run: Run, t: TileState, x: number, y: number, i: number): void {
     const sprite = this.atlas.get(spriteForCard(t.card));
     const node = run.map.index[i];
-    if (node >= 0 && (t.card === 'kicker' || t.card === 'patrol' || t.card === 'ice')) {
-      // Trail features face the direction of travel.
+    const across = t.card === 'patrol' || t.card === 'checkpoint' || t.card === 'gates' || t.card === 'tunnel';
+    if (node >= 0 && (t.card === 'kicker' || t.card === 'ice' || across)) {
+      // Trail features face the direction of travel; barriers, gates and tunnels lie across it.
       const dir = dirOf(run.map, node, run.map.nodes[node].next[0]);
-      const turn = t.card === 'patrol' ? (dir === 'left' || dir === 'right' ? Math.PI / 2 : 0) : ROTATION[dir] + Math.PI;
+      const turn = across ? (dir === 'left' || dir === 'right' ? Math.PI / 2 : 0) : ROTATION[dir] + Math.PI;
       ctx.save();
       ctx.translate(x + 8, y + 8);
       ctx.rotate(turn);

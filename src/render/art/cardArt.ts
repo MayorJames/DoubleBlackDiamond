@@ -478,6 +478,68 @@ const ART: Record<CardId, (px: Px) => void> = {
     px.set(14, 16, 'q');
     px.set(17, 16, 'q');
   },
+  gates(px) {
+    sky(px, 0, 0, S, 10);
+    range(px, 0, S, 10, 6, 61, { tones: ['w', 's', 'l', 'm'] });
+    snowField(px, 0, 10, S, 22, 61);
+    // A slalom course falling away: red and dark gates, nearer ones bigger, and a carved line.
+    const gate = (x: number, y: number, h: number, c: string) => {
+      px.rect(x, y, 1, h, 'k');
+      px.rect(x + 1, y, Math.max(2, Math.round(h / 3)), Math.max(2, Math.round(h / 4)), c);
+      px.set(x, y + h, 'l');
+    };
+    gate(6, 12, 5, 'r');
+    gate(20, 15, 7, 'd');
+    gate(9, 19, 9, 'r');
+    gate(24, 21, 10, 'd');
+    for (let y = 11; y < 32; y++) px.set(15 + Math.round(Math.sin(y * 0.38) * 7), y, 'm');
+    px.grid(SKIER, 14, 22);
+  },
+  tunnel(px) {
+    backdrop(px, 12, 63);
+    // A snow tunnel's mouth: a white arch over darkness, icicles, and the trail running in.
+    px.ellipse(16, 22, 14, 13, (_x, y) => (y < 12 ? 'w' : 's'));
+    px.rect(2, 22, 29, 10, 's');
+    px.ellipse(16, 23, 9, 9, 'k');
+    px.rect(7, 23, 19, 9, 'k');
+    px.ellipse(16, 22, 14, 13, (x, y) => (px.is(x, y, 'k') ? null : bayer(x, y, 3) ? 'l' : null));
+    for (const x of [9, 12, 16, 20, 23]) px.line(x, 15 + Math.abs(16 - x) * 0.4, x, 17 + Math.abs(16 - x) * 0.4 + (x % 2), 'w');
+    px.poly([[11, 32], [14, 24], [18, 24], [22, 32]], (x, y) => ((x + y) % 3 === 0 ? 's' : 'w'));
+    px.rect(15, 28, 2, 1, 'r');
+  },
+  checkpoint(px) {
+    backdrop(px, 15, 65);
+    trailBand(px, 23, 6);
+    // A sentry box with a red-striped barrier down across the trail, and a spotlight.
+    px.rect(2, 9, 9, 15, 'd');
+    px.rect(3, 11, 7, 5, 'r');
+    px.rect(4, 12, 5, 3, 'w');
+    px.rect(1, 7, 11, 2, 'k');
+    px.rect(1, 6, 11, 1, 'w');
+    px.sprite('guard', 10, 8);
+    px.rect(11, 15, 2, 9, 'k');
+    for (let x = 13; x < 32; x++) {
+      px.set(x, 15, 'k');
+      px.set(x, 18, 'k');
+      px.rect(x, 16, 1, 2, Math.floor(x / 3) % 2 ? 'r' : 'w');
+    }
+    px.poly([[6, 6], [0, 0], [12, 0]], (x, y) => (bayer(x, y, 6) ? 'w' : null));
+    px.rect(5, 5, 3, 2, 'k');
+  },
+  blackRun(px) {
+    sky(px, 0, 0, S, 12);
+    // A steep dark slope with a sign: a black diamond on white, and EXPERTS ONLY below.
+    px.poly([[0, 8], [32, 30], [32, 32], [0, 32]], (x, y) => ((x * 3 + y) % 9 === 0 ? 'l' : 's'));
+    px.line(0, 8, 32, 30, 'm');
+    px.rect(15, 18, 2, 14, 'k');
+    px.rect(6, 4, 20, 15, 'w');
+    px.rect(6, 4, 20, 1, 'k');
+    px.rect(6, 18, 20, 1, 'k');
+    px.rect(6, 4, 1, 15, 'k');
+    px.rect(25, 4, 1, 15, 'k');
+    blackDiamond(px, 16, 6, 5);
+    px.rect(9, 16, 14, 1, 'r');
+  },
   chairlift(px) {
     sky(px, 0, 0, S, S);
     range(px, 0, S, 32, 14, 41, { tones: ['w', 's', 'l', 'm'] });

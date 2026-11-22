@@ -39,7 +39,7 @@ const KIND_HINT: Record<CardKind, string> = {
   boss: 'Goes on the trail. Assembled from three intel fragments.',
   weather: 'Click anywhere on the map: it covers the whole mountain.',
 };
-const ROUTE_NAME = { lift: 'Chairlift', chute: 'Chute' } as const;
+const ROUTE_NAME = { lift: 'Chairlift', chute: 'Chute', trail: 'Path' } as const;
 const STANCE_TEXT: Record<Stance, string> = {
   tuck: '160% speed, 65% aim, +20% dodge. Builds mult on the trail.',
   cruise: 'Steady. No bonuses, no penalties.',
@@ -510,13 +510,15 @@ export class RunUi {
       const name = ROUTE_NAME[r.kind];
       parts.push(
         `<span class="kind">Junction</span><b>${r.take ? `Taking the ${name}` : `Skiing past the ${name}`}</b>${
-          r.kind === 'lift'
-            ? r.take
+          !r.take
+            ? 'On along the trail.'
+            : r.kind === 'lift'
               ? 'Up the lift for another descent (+1 mult), instead of home to the lodge.'
-              : 'On down the trail towards the lodge.'
-            : r.take
-              ? 'Straight down the chute: fast and steep, skipping the trail in between.'
-              : 'On along the trail, past everything you built there.'
+              : r.kind === 'chute'
+                ? 'Straight down the chute: fast and steep, skipping the trail in between.'
+                : run.map.segments[p.junction]?.back
+                  ? 'Along your path and back up the mountain: another descent (+1 mult), and every enemy card sends again.'
+                  : 'Along your path, skipping the trail it bypasses.'
         }<span class="kind">Click to switch · R switches the next one</span>`,
       );
     }

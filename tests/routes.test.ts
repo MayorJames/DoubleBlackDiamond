@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { CARDS, type CardId } from '../src/game/cards';
 import { MAP_H, MAP_W } from '../src/game/constants';
 import { build, bankRun, DECK_MAX, DECK_MIN, deckFor, newProfile, STARTER_DECK, toggleCard, unlockedCards } from '../src/game/lodge';
-import { cell, generateMap, LODGE, routeCourse, type RouteKind } from '../src/game/map';
+import { cell, generateMap, LODGE, routeCourse, type StraightRoute } from '../src/game/map';
 import { Run, type Command, type RunEvent } from '../src/game/run';
 
 const SEEDS = ['alpine', 'powder', 'mogul', 'whiteout', 'yeti', 'QX7P2M', 'B4R0N'];
 const ALL = Object.keys(CARDS) as CardId[];
 
 /** Every cell a route of this kind could leave from on a fresh run. */
-function routeSpots(run: Run, kind: RouteKind): { x: number; y: number; cells: number[]; end: number }[] {
+function routeSpots(run: Run, kind: StraightRoute): { x: number; y: number; cells: number[]; end: number }[] {
   const out = [];
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {
@@ -218,7 +218,7 @@ describe('the deck', () => {
     const p = newProfile();
     expect(deckFor(p)).toEqual(STARTER_DECK);
     expect(deckFor(p)).not.toContain('chairlift');
-    bankRun(p, 'retreated', { cash: 100000, intel: 100, scrap: 100, fraction: 1 }, 0);
+    bankRun(p, 'retreated', { cash: 100000, intel: 100, scrap: 100, fraction: 1 });
     expect(build(p, 'trailCrew')).toBe(true);
     expect(deckFor(p)).toContain('chute');
     for (const id of ['patrolHut', 'radio', 'gondola', 'avalancheControl', 'spyHq'] as const) build(p, id);

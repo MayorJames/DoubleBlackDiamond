@@ -97,11 +97,8 @@ export function rollGadget(rng: Rng, id: number, level: number, rarity: Rarity =
   return { id, slot: 'gadget', name: GADGETS[gadget].name, rarity: Math.max(1, rarity) as Rarity, level, stats: {}, gadget };
 }
 
-export const STARTER_GUN = (id: number): Item => ({
-  id,
-  slot: 'gun',
-  name: 'Pocket Pistol',
-  rarity: 0,
-  level: 1,
-  stats: {},
-});
+/** What you head out with: a pocket pistol, or with the Armory built, a silenced .22. */
+export const STARTER_GUN = (id: number, armory = false): Item =>
+  armory
+    ? { id, slot: 'gun', name: 'Silenced .22', rarity: 1, level: 1, stats: { damage: 2, fireRate: 0.15 } }
+    : { id, slot: 'gun', name: 'Pocket Pistol', rarity: 0, level: 1, stats: {} };
