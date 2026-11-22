@@ -144,15 +144,24 @@ describe('a run', () => {
     expect(JSON.stringify(c.state)).toBe(JSON.stringify(a.state));
   });
 
-  it('stops at the lodge after a lap, cashes chips x mult, and rides again a level harder', () => {
+  it('stops at the lodge after a lap, banks its bounties, and rides again a level harder', () => {
     const run = newRun();
     placeAnywhere(run, 'pines', (x, y) => besideTrail(run.map, x, y));
-    rideLap(run);
+    rideLap(run, () => {
+      run.state.hero.hp = 999;
+      return [];
+    });
     expect(run.state.status).toBe('lodge');
     const lap = run.drainEvents().find((e) => e.type === 'lap');
     expect(lap).toBeDefined();
-    if (lap?.type === 'lap') expect(lap.points).toBe(Math.round(lap.chips * lap.mult));
-    expect(run.state.cash).toBeGreaterThan(0);
+    if (lap?.type === 'lap') {
+      // Points are chips at the mult of the moment, so at least one each and at most the final mult each.
+      expect(lap.points).toBeGreaterThanOrEqual(lap.chips);
+      expect(lap.points).toBeLessThanOrEqual(Math.ceil(lap.chips * lap.mult) + lap.chips * 2);
+      expect(run.state.cash).toBe(lap.bounty);
+      expect(lap.bounty > 0).toBe(lap.kills > 0);
+    }
+    expect(run.state.points).toBeGreaterThan(0);
     run.step([{ type: 'rideAgain' }]);
     expect(run.state.status).toBe('riding');
     expect(run.state.lap).toBe(2);
@@ -194,17 +203,19 @@ describe('a run', () => {
     bail.step([{ type: 'bail' }]);
     const wipe = fresh();
     wipe.state.hero.hp = 0.01;
-    const at = wipe.heroPos();
-    wipe.state.enemies.push({ id: 99, kind: 'guard', level: 1, hp: 50, maxHp: 50, x: at.x, y: at.y, ride: null, home: -1, cooldown: 0 });
+    wipe.state.enemies = [];
+    // Out on the trail, past the lift (which heals), with a guard that won't go down.
+    const trail = wipe.map.nodes.findIndex((n) => n.kind === 'trail');
+    wipe.state.hero.ride = { at: trail, to: wipe.map.nodes[trail].next[0], f: 0 };
+    wipe.state.enemies.push({ id: 99, kind: 'guard', level: 1, hp: 5000, maxHp: 5000, x: 0, y: 0, ride: null, home: -1, cooldown: 0 });
     wipe.state.hero.stance = 'plow';
     for (let i = 0; i < 600 && !wipe.done; i++) {
       wipe.state.enemies[0].x = wipe.heroPos().x;
       wipe.state.enemies[0].y = wipe.heroPos().y;
       wipe.step();
     }
-    const rating = 0.75; // Bunny Hill pays three quarters
-    expect(home.state.payout).toMatchObject({ fraction: 1, cash: 1000 * rating, intel: 10 });
-    expect(bail.state.payout).toMatchObject({ fraction: 0.6, cash: Math.floor(600 * rating), intel: 6 });
+    expect(home.state.payout).toMatchObject({ fraction: 1, cash: 1000, intel: 10 });
+    expect(bail.state.payout).toMatchObject({ fraction: 0.6, cash: 600, intel: 6 });
     expect(wipe.state.status).toBe('wiped');
     expect(wipe.state.payout).toMatchObject({ fraction: 0.3, intel: 3 });
   });

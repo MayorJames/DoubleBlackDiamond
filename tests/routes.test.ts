@@ -217,11 +217,12 @@ describe('the deck', () => {
   it('starts with the starter cards, takes new unlocks while there is room, and stays within limits', () => {
     const p = newProfile();
     expect(deckFor(p)).toEqual(STARTER_DECK);
-    expect(deckFor(p)).toContain('chairlift');
+    expect(deckFor(p)).not.toContain('chairlift');
     bankRun(p, 'retreated', { cash: 100000, intel: 100, scrap: 100, fraction: 1 }, 0);
     expect(build(p, 'trailCrew')).toBe(true);
     expect(deckFor(p)).toContain('chute');
     for (const id of ['patrolHut', 'radio', 'gondola', 'avalancheControl', 'spyHq'] as const) build(p, id);
+    expect(unlockedCards(p)).toContain('chairlift');
     expect(unlockedCards(p).length).toBeGreaterThan(DECK_MAX);
     expect(deckFor(p)).toHaveLength(DECK_MAX);
 
@@ -272,12 +273,13 @@ describe('dossier bosses', () => {
     return out;
   }
 
-  it('fragments only drop once the mountain has a lift you built, and three make a dossier', () => {
-    const bare = Run.create({ seed: 'alpine', deck: STARTER_DECK });
-    killNear(bare, 'yeti');
-    expect(bare.state.fragments).toBe(0);
+  it('fragments only drop from the second lap on, and three make a dossier', () => {
+    const first = Run.create({ seed: 'alpine', deck: STARTER_DECK });
+    killNear(first, 'yeti');
+    expect(first.state.fragments).toBe(0);
 
     const run = withLift();
+    run.state.lap = 2;
     const events = [...killNear(run, 'yeti'), ...killNear(run, 'yeti'), ...killNear(run, 'yeti')];
     expect(events.filter((e) => e.type === 'fragment')).toHaveLength(3);
     const dossier = events.find((e) => e.type === 'dossier');

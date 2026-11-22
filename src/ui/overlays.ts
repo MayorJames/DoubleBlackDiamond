@@ -13,6 +13,8 @@ export interface TallyInfo {
   chips: number;
   mult: number;
   points: number;
+  kills: number;
+  bounty: number;
   lines: HandLine[];
   lapTime: number;
   descents: number;
@@ -82,7 +84,8 @@ export class Overlays {
       }),
     );
     $('tally-chips').textContent = String(t.chips);
-    $('tally-mult').textContent = t.mult.toFixed(1);
+    $('tally-mult').textContent = String(t.points);
+    $('tally-kills').textContent = String(t.kills);
     $('tally-points').textContent = '$0';
     const note = [`Next descent: new enemies arrive at level ${t.nextLevel}.`, `${t.enemies} on the mountain now.`];
     if (t.bossSoon) note.push('The Baron is close.');
@@ -95,7 +98,7 @@ export class Overlays {
     const count = (now: number) => {
       if (id !== this.counting) return;
       const k = Math.min(1, Math.max(0, (now - start) / 600));
-      $('tally-points').textContent = formatCash(t.points * k);
+      $('tally-points').textContent = formatCash(t.bounty * k);
       if (k < 1) requestAnimationFrame(count);
       else done();
     };
@@ -118,7 +121,7 @@ export class Overlays {
     };
     const [title, sub] = titles[status];
     $('result-title').textContent = title;
-    $('result-sub').textContent = `${sub}${RATINGS[rating].payout !== 1 ? ` ${RATINGS[rating].name} pays cash x${RATINGS[rating].payout}.` : ''}`;
+    $('result-sub').textContent = `${sub}${RATINGS[rating].payout !== 1 ? ` ${RATINGS[rating].name} bounties pay x${RATINGS[rating].payout}.` : ''}`;
     $('result-pay').innerHTML = [
       ['Cash', formatCash(payout.cash)],
       ['Intel', String(payout.intel)],

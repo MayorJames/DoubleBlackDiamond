@@ -71,6 +71,8 @@ export class App {
         equip: (i) => this.command({ type: 'equip', item: i }),
         salvage: (i) => this.command({ type: 'salvage', item: i }),
         bail: () => this.command({ type: 'bail' }),
+        buy: (i) => this.command({ type: 'buy', offer: i }),
+        reroll: () => this.command({ type: 'reroll' }),
         settingsChanged: () => saveSettings(this.settings),
       },
       this.renderer,
@@ -379,6 +381,15 @@ export class App {
           this.runUi.banner(`Dossier assembled: ${ENEMIES[e.boss].name}. Place it on the trail to summon them.`);
           this.sfx.chaChing();
           break;
+        case 'bought': {
+          const me = run.heroPos();
+          this.runUi.pop(`Bought ${CARDS[e.card].name}`, me.x, me.y - 1.4, 'loot');
+          this.sfx.chaChing();
+          break;
+        }
+        case 'reroll':
+          this.sfx.chipTick(3);
+          break;
         case 'discard':
           this.runUi.pop(`Hand full: burned ${CARDS[e.card].name}`, run.heroPos().x, run.heroPos().y - 1.4, 'loot');
           break;
@@ -390,6 +401,8 @@ export class App {
               chips: e.chips,
               mult: e.mult,
               points: e.points,
+              kills: e.kills,
+              bounty: e.bounty,
               lines: e.lines,
               lapTime: e.lapTime,
               descents: e.descents,
@@ -450,8 +463,8 @@ export class App {
       ['Routes built', String(st.routes.length)],
       ['Enemies down', String(st.record.kills)],
       ['Best lap', formatCash(st.record.bestLap)],
+      ['Cards bought', String(st.record.bought)],
       ['Cards placed', String(st.record.placed)],
-      ['Loot found', String(st.record.items)],
     ];
     setTimeout(() => this.overlays.showResult(st.status, st.payout!, st.rating, record, this.unlockedRating), won || st.status === 'wiped' ? 900 : 200);
   }

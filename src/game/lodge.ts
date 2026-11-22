@@ -22,7 +22,7 @@ export const BUILDINGS: Building[] = [
   { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute card: a steep shortcut straight down the mountain.', unlocks: ['chute'] },
   { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache and Powder Field cards.', unlocks: ['cache', 'powder'] },
   { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest and Snowmobile Garage. More danger, more loot.', unlocks: ['sniper', 'garage'] },
-  { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks Kicker and Ice Sheet cards.', unlocks: ['kicker', 'ice'] },
+  { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks the Chairlift, Kicker and Ice Sheet cards.', unlocks: ['chairlift', 'kicker', 'ice'] },
   { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak and Avalanche cards.', unlocks: ['peak', 'avalanche'] },
   { id: 'weatherStation', name: 'Weather Station', cost: { cash: 600, intel: 5, scrap: 4 }, text: 'Unlocks the Whiteout and Night weather cards.', unlocks: ['whiteout', 'night'] },
   { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks the Safehouse card, gadget drops and a second gadget slot.', unlocks: ['safehouse'] },
@@ -31,7 +31,7 @@ export const BUILDINGS: Building[] = [
 ];
 
 /** Cards you own from the start. */
-export const STARTER_DECK: CardId[] = ['patrol', 'chairlift', 'cabin', 'moguls', 'pines', 'boulder'];
+export const STARTER_DECK: CardId[] = ['patrol', 'cabin', 'moguls', 'pines', 'boulder'];
 
 /** How many different cards a deck can hold, at most and at least. */
 export const DECK_MAX = 8;

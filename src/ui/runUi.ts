@@ -6,7 +6,7 @@ import { MAP_W } from '../game/constants';
 import { ENEMIES } from '../game/enemies';
 import { GADGETS, RARITY_NAMES, type Item, type Slot, type StatKey } from '../game/items';
 import { nodeAt } from '../game/map';
-import type { Run } from '../game/run';
+import { FRAGMENT_LAP, type Run } from '../game/run';
 import { STANCES, type Stance } from '../game/stats';
 import { cardArtUrl } from '../render/art/cardArt';
 import type { MapRenderer } from '../render/mapRenderer';
@@ -118,6 +118,8 @@ export interface RunUiHooks {
   equip: (index: number) => void;
   salvage: (index: number) => void;
   bail: () => void;
+  buy: (offer: number) => void;
+  reroll: () => void;
   /** The player changed a preference (card tips on or off). */
   settingsChanged: () => void;
 }
@@ -128,7 +130,11 @@ export class RunUi {
   private gearKey = '';
   private prevHand: CardId[] = [];
   selected: number | null = null;
+  /** The card under the mouse: in the hand, or on offer in the shop. */
   private hoverCard: number | null = null;
+  private hoverOffer: number | null = null;
+  private shopKey = '';
+  private readonly shopEl = $('shop-cards');
 
   private readonly handEl = $('hand');
   private readonly cardTip = $('card-tip');
@@ -179,6 +185,16 @@ export class RunUi {
       this.hoverCard = card ? Number(card.dataset.index) : null;
     });
     this.handEl.addEventListener('mouseleave', () => (this.hoverCard = null));
+    this.shopEl.addEventListener('click', (e) => {
+      const offer = (e.target as HTMLElement).closest<HTMLButtonElement>('.offer');
+      if (offer && !offer.disabled) hooks.buy(Number(offer.dataset.offer));
+    });
+    this.shopEl.addEventListener('mouseover', (e) => {
+      const offer = (e.target as HTMLElement).closest<HTMLElement>('.offer');
+      this.hoverOffer = offer ? Number(offer.dataset.offer) : null;
+    });
+    this.shopEl.addEventListener('mouseleave', () => (this.hoverOffer = null));
+    $('reroll').addEventListener('click', () => hooks.reroll());
 
     for (const id of ['gear', 'inventory']) {
       const el = $(id);
@@ -201,6 +217,7 @@ export class RunUi {
 
   reset(): void {
     this.handKey = '';
+    this.shopKey = '';
     this.gearKey = '';
     this.prevHand = [];
     this.selected = null;
@@ -225,7 +242,7 @@ export class RunUi {
     const weather = st.weather;
     document.querySelector('.tb.weather')!.classList.toggle('hidden', !weather);
     if (weather) this.text('weather-text', `${weather.kind === 'night' ? 'Night' : 'Whiteout'} · ${weather.laps === 1 ? 'this lap' : `${weather.laps} laps`}`);
-    this.text('run-frag', st.routes.some((r) => r.kind === 'lift') ? `${st.fragments}/3` : 'build a lift');
+    this.text('run-frag', st.lap >= FRAGMENT_LAP ? `${st.fragments}/3` : `from lap ${FRAGMENT_LAP}`);
     document.querySelectorAll<HTMLButtonElement>('.tb.speed button').forEach((b) =>
       b.classList.toggle('on', Number(b.dataset.speed) === speed),
     );
@@ -256,11 +273,14 @@ export class RunUi {
       .join('');
     if (this.changed('stats', statsHtml)) $('stats').innerHTML = statsHtml;
 
+    this.text('points', String(Math.floor(st.points)));
+    this.text('lap-earn', `+${Math.floor(st.lapPoints)} points · ${st.lapKills} down · ${formatCash(st.lapBounty)} bounty`);
     this.text('chips', String(st.lapHand.chips));
     this.text('mult', st.lapHand.mult.toFixed(1));
     this.text('combo', `Combo ${st.lapHand.combo}${st.permanentMult > 0 ? ` · +${st.permanentMult.toFixed(2)} mult kept` : ''}`);
 
     this.renderHand(run);
+    this.renderShop(run);
     this.renderGear(run);
     this.renderCardTip(run);
   }
@@ -312,6 +332,35 @@ export class RunUi {
     );
   }
 
+  /** The three offers beside the hand, priced in points; what you can't afford is greyed out. */
+  private renderShop(run: Run): void {
+    const st = run.state;
+    const points = Math.floor(st.points);
+    const reroll = run.rerollPrice();
+    const live = st.status === 'riding' || st.status === 'lodge';
+    const key = JSON.stringify([st.shop, points >= reroll, st.shop.map((o) => points >= o.price), live, this.settings.cardTips, st.record.bought]);
+    const btn = $<HTMLButtonElement>('reroll');
+    btn.textContent = `Reroll · ${reroll}`;
+    btn.disabled = !live || points < reroll;
+    if (key === this.shopKey) return;
+    const bought = this.shopKey !== '' && JSON.parse(this.shopKey)[5] !== st.record.bought;
+    this.shopKey = key;
+    this.shopEl.replaceChildren(
+      ...st.shop.map((o, i) => {
+        const def = CARDS[o.card];
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = `offer ${def.kind}${bought ? ' bought' : ''}`;
+        b.dataset.offer = String(i);
+        b.disabled = !live || points < o.price;
+        if (!this.settings.cardTips) b.title = `${def.name} (${o.price} points): ${def.text}`;
+        b.setAttribute('aria-label', `Buy ${def.name} for ${o.price} points`);
+        b.innerHTML = `<span class="ckind">${KIND_LABEL[def.kind]}</span><img alt="" src="${cardArt(o.card)}"><span class="price">${o.price} pts</span>`;
+        return b;
+      }),
+    );
+  }
+
   private renderTipsToggle(): void {
     const on = this.settings.cardTips;
     this.tipsToggle.textContent = on ? 'Card tips: on' : 'Card tips: off';
@@ -336,18 +385,22 @@ export class RunUi {
       this.last.delete('placehint');
     }
     const i = this.hoverCard;
-    const card = i !== null && i !== this.selected && this.settings.cardTips ? run.state.hand[i] : undefined;
+    const o = this.hoverOffer !== null ? run.state.shop[this.hoverOffer] : undefined;
+    const card = !this.settings.cardTips ? undefined : o ? o.card : i !== null && i !== this.selected ? run.state.hand[i] : undefined;
     if (!card) {
       this.cardTip.classList.add('hidden');
       this.last.delete('cardtip');
       return;
     }
     const def = CARDS[card];
-    const html = `<img class="tip-art" alt="" src="${cardArtUrl(card, 3)}"><span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i><span class="kind">Click to place · right-click to burn</span>`;
+    const action = o
+      ? `${o.price} points · ${Math.floor(run.state.points) >= o.price ? 'click to buy (the shop then rerolls)' : `you need ${o.price - Math.floor(run.state.points)} more`}`
+      : 'Click to place · right-click to burn';
+    const html = `<img class="tip-art" alt="" src="${cardArtUrl(card, 3)}"><span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i><span class="kind">${action}</span>`;
     if (this.changed('cardtip', html)) this.cardTip.innerHTML = html;
     this.cardTip.classList.remove('hidden');
     // Sit over the hovered card, kept inside the hand area.
-    const el = this.handEl.querySelector<HTMLElement>(`.card[data-index="${i}"]`);
+    const el = o ? this.shopEl.querySelector<HTMLElement>(`.offer[data-offer="${this.hoverOffer}"]`) : this.handEl.querySelector<HTMLElement>(`.card[data-index="${i}"]`);
     const wrap = this.handEl.parentElement!;
     if (el) {
       const w = this.cardTip.offsetWidth;

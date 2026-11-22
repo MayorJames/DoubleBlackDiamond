@@ -20,6 +20,8 @@ export interface EnemyDef {
   accuracy: number;
   evasion: number;
   chips: number;
+  /** Cash for the kill, banked at the lodge; scaled by level and the trail's difficulty. */
+  bounty: number;
   /** Tiles per second along the path, for chasers; 0 for enemies that hold a tile. */
   speed: number;
   /** Resources dropped on a kill. Below 1 it is the chance of dropping one. */
@@ -30,14 +32,14 @@ export interface EnemyDef {
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  guard: { name: 'Guard', hp: 14, damage: 4, interval: 1.4, range: 1.4, accuracy: 0.6, evasion: 0.05, chips: 20, speed: 0, intel: 1, scrap: 0.35, cardChance: 0.45, itemChance: 0.28 },
-  sniper: { name: 'Sniper', hp: 10, damage: 10, interval: 3, range: 2.6, accuracy: 0.7, evasion: 0.1, chips: 40, speed: 0, intel: 2, scrap: 0.3, cardChance: 0.5, itemChance: 0.35 },
-  snowmobile: { name: 'Snowmobile Goon', hp: 22, damage: 5, interval: 1.2, range: 1.3, accuracy: 0.55, evasion: 0.1, chips: 35, speed: 2.3, intel: 0, scrap: 2, cardChance: 0.4, itemChance: 0.4 },
-  yeti: { name: 'Yeti', hp: 60, damage: 9, interval: 1.8, range: 1.2, accuracy: 0.65, evasion: 0, chips: 90, speed: 0, intel: 3, scrap: 1, cardChance: 0.8, itemChance: 0.7 },
-  baron: { name: 'The Avalanche Baron', hp: 300, damage: 7, interval: 0.8, range: 2, accuracy: 0.6, evasion: 0.1, chips: 600, speed: 2.2, intel: 20, scrap: 20, cardChance: 0, itemChance: 1 },
-  widow: { name: 'The Ice Widow', hp: 200, damage: 13, interval: 2.2, range: 3.4, accuracy: 0.75, evasion: 0.15, chips: 400, speed: 0, intel: 10, scrap: 6, cardChance: 1, itemChance: 0 },
-  yetiKing: { name: 'The Yeti King', hp: 340, damage: 15, interval: 2, range: 1.6, accuracy: 0.7, evasion: 0, chips: 500, speed: 0, intel: 10, scrap: 10, cardChance: 1, itemChance: 0 },
-  kickback: { name: 'Captain Kickback', hp: 170, damage: 6, interval: 0.6, range: 1.8, accuracy: 0.55, evasion: 0.25, chips: 450, speed: 2.9, intel: 10, scrap: 8, cardChance: 1, itemChance: 0 },
+  guard: { name: 'Guard', hp: 14, damage: 4, interval: 1.4, range: 1.4, accuracy: 0.6, evasion: 0.05, chips: 20, bounty: 40, speed: 0, intel: 1, scrap: 0.35, cardChance: 0.45, itemChance: 0.28 },
+  sniper: { name: 'Sniper', hp: 10, damage: 10, interval: 3, range: 2.6, accuracy: 0.7, evasion: 0.1, chips: 40, bounty: 70, speed: 0, intel: 2, scrap: 0.3, cardChance: 0.5, itemChance: 0.35 },
+  snowmobile: { name: 'Snowmobile Goon', hp: 22, damage: 5, interval: 1.2, range: 1.3, accuracy: 0.55, evasion: 0.1, chips: 35, bounty: 60, speed: 2.3, intel: 0, scrap: 2, cardChance: 0.4, itemChance: 0.4 },
+  yeti: { name: 'Yeti', hp: 60, damage: 9, interval: 1.8, range: 1.2, accuracy: 0.65, evasion: 0, chips: 90, bounty: 180, speed: 0, intel: 3, scrap: 1, cardChance: 0.8, itemChance: 0.7 },
+  baron: { name: 'The Avalanche Baron', hp: 300, damage: 7, interval: 0.8, range: 2, accuracy: 0.6, evasion: 0.1, chips: 600, bounty: 0, speed: 2.2, intel: 20, scrap: 20, cardChance: 0, itemChance: 1 },
+  widow: { name: 'The Ice Widow', hp: 200, damage: 13, interval: 2.2, range: 3.4, accuracy: 0.75, evasion: 0.15, chips: 400, bounty: 0, speed: 0, intel: 10, scrap: 6, cardChance: 1, itemChance: 0 },
+  yetiKing: { name: 'The Yeti King', hp: 340, damage: 15, interval: 2, range: 1.6, accuracy: 0.7, evasion: 0, chips: 500, bounty: 0, speed: 0, intel: 10, scrap: 10, cardChance: 1, itemChance: 0 },
+  kickback: { name: 'Captain Kickback', hp: 170, damage: 6, interval: 0.6, range: 1.8, accuracy: 0.55, evasion: 0.25, chips: 450, bounty: 0, speed: 2.9, intel: 10, scrap: 8, cardChance: 1, itemChance: 0 },
 };
 
 /** Who the bosses are, for their arrival. */

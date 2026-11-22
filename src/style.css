@@ -721,17 +721,139 @@ input:focus-visible {
   }
 }
 
-/* The hand of cards: chunky, wobbly, Balatro-style. */
+/* The hand of cards: chunky, wobbly, Balatro-style, with the shop beside it. */
 #hand-wrap {
   position: relative;
-  padding: 8px 12px 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 14px 12px 12px;
 }
 
 #hand {
+  flex: 1;
+  min-width: 0;
   display: flex;
   justify-content: center;
   gap: 8px;
   min-height: 132px;
+}
+
+.shop {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 74px);
+  grid-template-rows: auto auto auto;
+  gap: 6px;
+  padding: 6px 8px 8px;
+  border: 3px solid var(--ink);
+  background: repeating-linear-gradient(135deg, var(--paper) 0 6px, var(--shade) 6px 12px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.shop-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.shop-head b {
+  font: 700 16px var(--pixel);
+  color: var(--red);
+  margin-left: auto;
+}
+
+.shop-cards {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, 74px);
+  gap: 6px;
+}
+
+.offer {
+  position: relative;
+  height: 104px;
+  padding: 0;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  background: var(--paper);
+  display: grid;
+  grid-template-rows: 14px 1fr 18px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: translate 0.1s;
+}
+
+.offer:hover:not(:disabled) {
+  translate: 0 -4px;
+}
+
+.offer .ckind {
+  font: 700 7px/14px var(--pixel);
+  text-transform: uppercase;
+  text-align: center;
+  border-bottom: 2px solid var(--ink);
+  background: var(--shade);
+}
+
+.offer.trail .ckind,
+.offer.route .ckind {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.offer.roadside .ckind {
+  background: var(--mid);
+  color: var(--paper);
+}
+
+.offer.special .ckind,
+.offer.weather .ckind {
+  background: var(--red);
+  color: var(--paper);
+}
+
+.offer img {
+  place-self: center;
+  width: 64px;
+  height: 64px;
+  image-rendering: pixelated;
+}
+
+.offer .price {
+  font: 700 10px/18px var(--pixel);
+  text-align: center;
+  background: var(--red);
+  color: var(--paper);
+  border-top: 2px solid var(--ink);
+}
+
+.offer:disabled {
+  cursor: not-allowed;
+}
+
+.offer:disabled .price {
+  background: var(--shade);
+  color: var(--mid);
+}
+
+.offer:disabled img {
+  opacity: 0.55;
+}
+
+.offer.bought {
+  animation: deal 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.shop #reroll {
+  grid-column: 1 / -1;
+}
+
+.lap-earn {
+  margin: 6px 0 0;
+  font: 700 10px var(--pixel);
+  text-transform: uppercase;
 }
 
 .card {
@@ -973,6 +1095,22 @@ input:focus-visible {
 @media (max-width: 700px) {
   #place-hint .keys {
     display: none;
+  }
+  #hand-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .shop {
+    align-self: center;
+  }
+  /* The hand scrolls sideways on a phone rather than squashing the cards. */
+  #hand {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 22px 4px 10px;
+  }
+  .card {
+    flex: 0 0 84px;
   }
 }
 
@@ -1427,7 +1565,7 @@ input:focus-visible {
 @media (max-width: 860px) {
   #run-screen {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(260px, 1fr) auto;
+    grid-template-rows: auto auto auto;
     grid-template-areas:
       'top'
       'board'
@@ -1436,6 +1574,16 @@ input:focus-visible {
   }
   #side {
     padding: 12px;
+  }
+  #board {
+    grid-template-rows: auto auto;
+    min-height: auto;
+  }
+  #map-wrap {
+    aspect-ratio: 18 / 11;
+  }
+  #side {
+    overflow: visible;
   }
   .lodge-body {
     grid-template-columns: minmax(0, 1fr);

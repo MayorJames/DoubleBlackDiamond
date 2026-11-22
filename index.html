@@ -49,14 +49,14 @@
             <summary>How it plays</summary>
             <ul>
               <li>Your skier skis the mountain on their own: up the lift, down the trail, back to the lodge.</li>
-              <li><b>Chairlifts</b> climb from the trail back up the mountain: ride one to chain another descent before the lodge for <span class="red">+1 mult</span>, but every descent brings tougher enemies and the lap only cashes in at the lodge. <b>Chutes</b> are steep shortcuts straight down.</li>
-              <li>Where a route branches off, a red rope closes the way you won't go. <b>Click the junction</b> (or press R for the next one) to switch.</li>
-              <li><b>Place cards</b> from your hand to build it. Trail cards go on the run, roadside cards beside it, landscape cards on open snow. Enemy cards are dangerous but drop loot and more cards.</li>
+              <li><b>Enemies arrive every descent.</b> Each lap brings its own wave, and every enemy card you've placed rolls how many to send and where. Ride a lift to chain another descent and they come again, a level tougher.</li>
+              <li><b>Place cards</b> from your hand to build the mountain. Trail cards go on the run, roadside cards beside it, landscape cards on open snow.</li>
               <li><b>Steer the speed</b> with W and S. Tuck is fast, hard to hit and builds <span class="red">mult</span>, but your aim is poor. Snowplow is slow and accurate, but you're a sitting duck.</li>
-              <li>Fights happen on the move. Kills, grazes, air and supplies earn <b>chips</b>. Each lap cashes in as chips × <span class="red">mult</span> at the lodge.</li>
+              <li>Kills, grazes, air and supplies earn <b>chips</b>, and every chip pays chips × your current <span class="red">mult</span> in <b>points</b>. Spend points in the <b>shop</b> beside your hand: buying a card rerolls all three.</li>
+              <li>Every enemy you shoot pays a <b>bounty</b> in cash, banked at the lodge at the end of each lap. Tougher trails pay more.</li>
+              <li><b>Chairlifts</b> (from Gondola Works, two per mountain) chain another descent for <span class="red">+1 mult</span>. Where a route branches off, a red rope closes the way you won't go: <b>click the junction</b> or press R to switch.</li>
               <li>At the lodge, ride again or call it a day and keep everything. Bail out mid-lap and keep 60%; wipe out and keep 30%.</li>
-              <li>Every card you place fills the Baron meter. Fill it and the Avalanche Baron comes for you.</li>
-              <li>Once you've built a chairlift, snipers, snowmobiles and yetis drop <b>intel fragments</b>. Three make a dossier: a boss card with a one-of-a-kind reward.</li>
+              <li>Every card you place fills the Baron meter. Fill it and the Avalanche Baron comes for you. From lap 2, snipers, snowmobiles and yetis drop <b>intel fragments</b>: three make a dossier, a boss card with a one-of-a-kind reward.</li>
             </ul>
           </details>
         </section>
@@ -80,7 +80,7 @@
           <span><span class="label">Cash</span><b id="run-cash">$0</b></span>
           <span><span class="label">Intel</span><b id="run-intel">0</b></span>
           <span><span class="label">Scrap</span><b id="run-scrap">0</b></span>
-          <span title="Intel fragments drop once you've built a chairlift. Three make a dossier: a boss card."><span class="label">Dossier</span><b id="run-frag">0/3</b></span>
+          <span title="Intel fragments drop from the second lap on. Three make a dossier: a boss card."><span class="label">Dossier</span><b id="run-frag">0/3</b></span>
         </div>
         <div class="tb speed" role="group" aria-label="Game speed">
           <button data-speed="0" title="Pause (Space)">II</button>
@@ -102,6 +102,14 @@
         <footer id="hand-wrap">
           <div id="card-tip" class="tip hidden"></div>
           <button id="tips-toggle" class="tips-toggle" type="button" aria-pressed="true" title="Show a card's description when you hover it">Card tips: on</button>
+          <section id="shop" class="shop" aria-label="Card shop">
+            <header class="shop-head" title="Every chip you earn pays chips × your mult in points. Spend them here: buying a card rerolls all three.">
+              <span class="label">Shop</span>
+              <b id="points">0</b><span class="label">pts</span>
+            </header>
+            <div id="shop-cards" class="shop-cards"></div>
+            <button id="reroll" class="btn small" type="button" title="New offers, for a price that rises each time this lap">Reroll</button>
+          </section>
           <div id="hand"></div>
         </footer>
       </main>
@@ -140,6 +148,7 @@
             <div class="x">×</div>
             <div class="mult"><span class="label">Mult</span><b id="mult">1.0</b></div>
           </div>
+          <p id="lap-earn" class="lap-earn">+0 points · 0 down · $0 bounty</p>
           <p id="combo" class="muted">Combo 0</p>
         </section>
       </aside>
@@ -153,10 +162,10 @@
         <ul id="tally-lines" class="tally-lines"></ul>
         <div class="tally-score">
           <div class="chips"><span class="label">Chips</span><b id="tally-chips">0</b></div>
-          <div class="x">×</div>
-          <div class="mult"><span class="label">Mult</span><b id="tally-mult">1.0</b></div>
+          <div class="mult"><span class="label">Points earned</span><b id="tally-mult">0</b></div>
+          <div class="chips"><span class="label">Enemies down</span><b id="tally-kills">0</b></div>
           <div class="eq">=</div>
-          <div class="points"><span class="label">Cash</span><b id="tally-points">0</b></div>
+          <div class="points"><span class="label">Bounty banked</span><b id="tally-points">$0</b></div>
         </div>
         <p id="tally-note" class="muted"></p>
         <div class="modal-actions">

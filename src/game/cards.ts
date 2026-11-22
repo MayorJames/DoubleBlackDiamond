@@ -44,42 +44,45 @@ export interface CardDef {
   weight: number;
   /** How much it fills the boss meter. */
   boss: number;
+  /** Base price in the shop, in card points (it rises a little each lap). */
+  cost: number;
 }
 
-const def = (id: CardId, name: string, kind: CardKind, weight: number, boss: number, text: string, flavor: string): CardDef => ({
+const def = (id: CardId, name: string, kind: CardKind, weight: number, boss: number, cost: number, text: string, flavor: string): CardDef => ({
   id,
   name,
   kind,
   weight,
   boss,
+  cost,
   text,
   flavor,
 });
 
-/** Dossier cards: assembled from intel fragments, never drawn from a deck. */
-const dossier = (id: CardId, name: string, text: string, flavor: string): CardDef => def(id, name, 'boss', 0, 3, text, flavor);
+/** Dossier cards: assembled from intel fragments, never drawn from a deck or sold. */
+const dossier = (id: CardId, name: string, text: string, flavor: string): CardDef => def(id, name, 'boss', 0, 3, 0, text, flavor);
 export const CARDS: Record<CardId, CardDef> = {
-  patrol: def('patrol', 'Patrol Post', 'trail', 3, 1, 'A guard now, and 1-2 more at the start of every descent (up to 3 here).', 'Papers, please. Also, skis.'),
-  moguls: def('moguls', 'Mogul Field', 'trail', 2, 1, 'Slows you to 70%. +12 chips each pass, +0.3 mult if you tuck through.', 'Knees optional.'),
-  kicker: def('kicker', 'Kicker', 'trail', 2, 1, "Airborne here: you can't be hit, or shoot. +25 chips, +0.5 mult.", 'Send it.'),
-  ice: def('ice', 'Ice Sheet', 'trail', 2, 1, 'Speed x1.6 here, but your aim is x0.6.', 'Groomed by a zamboni with a grudge.'),
-  cabin: def('cabin', 'Guard Cabin', 'roadside', 2, 1, 'Every descent, up to 2 guards walk out onto the trail within 2 tiles.', 'Smoke from the chimney. Bullets from the window.'),
-  sniper: def('sniper', 'Sniper Nest', 'roadside', 2, 2, 'A sniper fires from 2.5 tiles away. Drop him and another takes his place next descent.', 'Watch for the red glint.'),
-  garage: def('garage', 'Snowmobile Garage', 'roadside', 1, 2, 'Every descent, a snowmobile (sometimes two) chases you round the mountain.', 'Two-stroke, two goons.'),
-  cache: def('cache', 'Supply Cache', 'roadside', 2, 1, 'Ski past to heal 20%, once a lap. +10 chips.', 'Hot cocoa and bandages.'),
-  safehouse: def('safehouse', 'Safehouse', 'roadside', 1, 1, 'Ski past to draw a card and pick up 1 intel, once a lap.', 'The doormat says GO AWAY.'),
-  pines: def('pines', 'Pine Grove', 'landscape', 3, 1, '+3% dodge. Every trail tile beside it pays 4 chips for the graze.', 'Close shaves pay.'),
-  boulder: def('boulder', 'Boulder', 'landscape', 3, 1, '+4 max HP.', "It's a rock."),
-  peak: def('peak', 'Peak', 'landscape', 2, 1, '+8 max HP. Fill a 3x3 with peaks and boulders for a Double Black Diamond.', 'Experts only.'),
-  powder: def('powder', 'Powder Field', 'landscape', 2, 1, 'Heals 8 HP at the start of every lap, +2 for each pine grove beside it.', 'Face shots for days.'),
-  avalanche: def('avalanche', 'Avalanche', 'special', 1, 0, 'Wipes out a placed tile and everything on and around it.', 'Not the snow you ordered.'),
+  patrol: def('patrol', 'Patrol Post', 'trail', 3, 1, 30, 'A guard now, and 1-2 more at the start of every descent (up to 3 here).', 'Papers, please. Also, skis.'),
+  moguls: def('moguls', 'Mogul Field', 'trail', 2, 1, 35, 'Slows you to 70%. +12 chips each pass, +0.3 mult if you tuck through.', 'Knees optional.'),
+  kicker: def('kicker', 'Kicker', 'trail', 2, 1, 50, "Airborne here: you can't be hit, or shoot. +25 chips, +0.5 mult.", 'Send it.'),
+  ice: def('ice', 'Ice Sheet', 'trail', 2, 1, 35, 'Speed x1.6 here, but your aim is x0.6.', 'Groomed by a zamboni with a grudge.'),
+  cabin: def('cabin', 'Guard Cabin', 'roadside', 2, 1, 35, 'Every descent, up to 2 guards walk out onto the trail within 2 tiles.', 'Smoke from the chimney. Bullets from the window.'),
+  sniper: def('sniper', 'Sniper Nest', 'roadside', 2, 2, 45, 'A sniper fires from 2.5 tiles away. Drop him and another takes his place next descent.', 'Watch for the red glint.'),
+  garage: def('garage', 'Snowmobile Garage', 'roadside', 1, 2, 50, 'Every descent, a snowmobile (sometimes two) chases you round the mountain.', 'Two-stroke, two goons.'),
+  cache: def('cache', 'Supply Cache', 'roadside', 2, 1, 55, 'Ski past to heal 20%, once a lap. +10 chips.', 'Hot cocoa and bandages.'),
+  safehouse: def('safehouse', 'Safehouse', 'roadside', 1, 1, 70, 'Ski past to draw a card and pick up 1 intel, once a lap.', 'The doormat says GO AWAY.'),
+  pines: def('pines', 'Pine Grove', 'landscape', 3, 1, 40, '+3% dodge. Every trail tile beside it pays 4 chips for the graze.', 'Close shaves pay.'),
+  boulder: def('boulder', 'Boulder', 'landscape', 3, 1, 35, '+4 max HP.', "It's a rock."),
+  peak: def('peak', 'Peak', 'landscape', 2, 1, 55, '+8 max HP. Fill a 3x3 with peaks and boulders for a Double Black Diamond.', 'Experts only.'),
+  powder: def('powder', 'Powder Field', 'landscape', 2, 1, 55, 'Heals 8 HP at the start of every lap, +2 for each pine grove beside it.', 'Face shots for days.'),
+  avalanche: def('avalanche', 'Avalanche', 'special', 1, 0, 40, 'Wipes out a placed tile and everything on and around it.', 'Not the snow you ordered.'),
   chairlift: def(
     'chairlift',
     'Chairlift',
     'route',
-    2,
-    2,
-    'Builds a lift from this trail tile up to the trail above. Ride it to chain another descent before the lodge: +1 mult each time.',
+    1,
+    2, 120,
+    'Builds a lift from this trail tile up to the trail above. Ride it to chain another descent before the lodge: +1 mult each time. Two lifts at most.',
     'Lower the safety bar. Raise the stakes.',
   ),
   chute: def(
@@ -87,7 +90,7 @@ export const CARDS: Record<CardId, CardDef> = {
     'Chute',
     'route',
     2,
-    1,
+    1, 80,
     'Cuts a steep chute from this trail tile down to the trail below. Very fast, +0.2 mult a tile, and it skips everything in between.',
     'Scraped clean by the brave and the stupid.',
   ),
@@ -96,7 +99,7 @@ export const CARDS: Record<CardId, CardDef> = {
     'Whiteout',
     'weather',
     1,
-    1,
+    1, 65,
     'For this lap and the next, everyone can only see 60% as far: you and them. Kills and grazes pay double chips.',
     'You can hear them. You just cannot see them.',
   ),
@@ -105,7 +108,7 @@ export const CARDS: Record<CardId, CardDef> = {
     'Night',
     'weather',
     1,
-    1,
+    1, 65,
     'For this lap and the next, enemies hit 40% less often and your aim drops 15%. Cards and gear drop half as often again.',
     'Black jacket optional.',
   ),
@@ -136,6 +139,9 @@ export const BOSS_OF: Partial<Record<CardId, 'widow' | 'yetiKing' | 'kickback'>>
   dossierKickback: 'kickback',
 };
 
+/** Lifts you can build on one mountain. */
+export const MAX_LIFTS = 2;
+
 /** The kind of route a route card builds. */
 export const ROUTE_OF: Partial<Record<CardId, RouteKind>> = { chairlift: 'lift', chute: 'chute' };
 
@@ -164,7 +170,10 @@ export function canPlace(map: MountainMap, tiles: Tiles, card: CardId, x: number
   // Weather covers the whole mountain: click anywhere.
   if (kind === 'weather') return true;
   // A route can share its junction with a trail card, but can't cross anything you've placed.
-  if (kind === 'route') return !!routeCourse(map, ROUTE_OF[card]!, x, y, (c) => !!tiles[c]);
+  if (kind === 'route') {
+    if (ROUTE_OF[card] === 'lift' && map.lifts.filter((l) => l.route >= 0).length >= MAX_LIFTS) return false;
+    return !!routeCourse(map, ROUTE_OF[card]!, x, y, (c) => !!tiles[c]);
+  }
   const placed = tiles[cell(x, y)];
   if (kind === 'special') return !!placed;
   if (placed) return false;

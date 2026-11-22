@@ -54,6 +54,20 @@ export interface LapHand {
   lines: HandLine[];
 }
 
+/** Something for sale in the shop beside the hand. */
+export type ShopOffer = { kind: 'card'; card: CardId; price: number };
+
+/** The shop: three offers that reroll whenever you buy one, or pay to reroll. */
+export const SHOP = {
+  size: 3,
+  /** Prices rise this much per lap after the first. */
+  lapScale: 0.2,
+  rerollBase: 10,
+  rerollStep: 5,
+  /** Cards dealt into your hand at the start of an expedition. */
+  startingHand: 4,
+};
+
 export interface Payout {
   cash: number;
   intel: number;
@@ -84,6 +98,15 @@ export interface RunState {
   descent: number;
   /** Descents in the current lap: more than one means you rode a lift instead of going home. */
   lapDescents: number;
+  /** Card points to spend in the shop: every chip you earn pays chips x your mult at that moment. */
+  points: number;
+  shop: ShopOffer[];
+  /** Paid rerolls this lap (each costs more than the last). */
+  rerolls: number;
+  /** This lap so far: points earned, enemies down, and the cash bounty that banks at the lodge. */
+  lapPoints: number;
+  lapKills: number;
+  lapBounty: number;
   lapTime: number;
   /** How long this lap's route would take at a cruise, for the fast-lap bonus. */
   lapPar: number;
@@ -97,7 +120,7 @@ export interface RunState {
   cash: number;
   intel: number;
   scrap: number;
-  record: { kills: number; bestLap: number; placed: number; items: number; descents: number; bosses: BossKind[] };
+  record: { kills: number; bestLap: number; placed: number; items: number; descents: number; bosses: BossKind[]; bought: number };
   status: RunStatus;
   payout: Payout | null;
 }
@@ -106,6 +129,8 @@ export type Command =
   | { type: 'stance'; stance: Stance }
   | { type: 'place'; hand: number; x: number; y: number }
   | { type: 'burn'; hand: number }
+  | { type: 'buy'; offer: number }
+  | { type: 'reroll' }
   | { type: 'switch'; route: number }
   | { type: 'equip'; item: number }
   | { type: 'salvage'; item: number }
@@ -128,7 +153,9 @@ export type RunEvent =
   | { type: 'loot'; what: 'card' | 'item' | 'intel' | 'scrap'; label: string; x: number; y: number }
   | { type: 'heal'; amount: number; x: number; y: number }
   | { type: 'heroHit'; damage: number }
-  | { type: 'lap'; lap: number; chips: number; mult: number; points: number; lines: HandLine[]; lapTime: number; descents: number }
+  | { type: 'lap'; lap: number; chips: number; mult: number; points: number; kills: number; bounty: number; lines: HandLine[]; lapTime: number; descents: number }
+  | { type: 'bought'; card: CardId; price: number }
+  | { type: 'reroll'; price: number }
   | { type: 'wave'; lap: number; descent: number; count: number; chained: boolean }
   | { type: 'boss' }
   | { type: 'weather'; kind: WeatherKind | null }
@@ -157,8 +184,9 @@ const KILL_LINES: Record<EnemyKind, string> = {
   kickback: 'Captain Kickback',
 };
 
-/** Chance each kind drops an intel fragment, once the mountain has a second lift. */
-const FRAGMENT_CHANCE: Partial<Record<EnemyKind, number>> = { guard: 0.06, sniper: 0.35, snowmobile: 0.35, yeti: 1 };
+/** Chance each kind drops an intel fragment, from lap FRAGMENT_LAP on. */
+const FRAGMENT_CHANCE: Partial<Record<EnemyKind, number>> = { guard: 0.05, sniper: 0.3, snowmobile: 0.3, yeti: 1 };
+export const FRAGMENT_LAP = 2;
 const DOSSIER_FOR: Record<BossKind, CardId> = { widow: 'dossierWidow', yetiKing: 'dossierYetiKing', kickback: 'dossierKickback' };
 export const FRAGMENTS_PER_DOSSIER = 3;
 /** Cash for beating a dossier boss. */
@@ -172,6 +200,9 @@ export const SPAWNS = {
   dbdYeti: 0.6,
   maxChasers: 4,
 };
+
+/** Kills drop cards less often now the shop sells them. */
+const KILL_CARDS = 0.5;
 
 /** Seconds between the Yeti King's calls. */
 const KING_CALL = 10;
@@ -236,6 +267,12 @@ export class Run {
       lap: 1,
       descent: 1,
       lapDescents: 1,
+      points: 0,
+      shop: [],
+      rerolls: 0,
+      lapPoints: 0,
+      lapKills: 0,
+      lapBounty: 0,
       lapTime: 0,
       lapPar: 0,
       boss: { meter: 0, max: RATINGS[rating].boss, spawned: false },
@@ -246,13 +283,14 @@ export class Run {
       cash: 0,
       intel: 0,
       scrap: 0,
-      record: { kills: 0, bestLap: 0, placed: 0, items: 0, descents: 0, bosses: [] },
+      record: { kills: 0, bestLap: 0, placed: 0, items: 0, descents: 0, bosses: [], bought: 0 },
       status: 'riding',
       payout: null,
     };
     const run = new Run(state);
     state.hero.hp = run.stats.maxHp;
-    for (let i = 0; i < 5; i++) run.drawCard();
+    for (let i = 0; i < SHOP.startingHand; i++) run.drawCard();
+    run.rollShop();
     // The mountain is never empty: the first lap's enemies are already out on the trail.
     run.startDescent(true);
     run.events = [];
@@ -358,6 +396,18 @@ export class Run {
           st.intel++;
         }
         break;
+      case 'buy':
+        if (live) this.buy(c.offer);
+        break;
+      case 'reroll':
+        if (live && st.points >= this.rerollPrice()) {
+          const price = this.rerollPrice();
+          st.points -= price;
+          st.rerolls++;
+          this.rollShop();
+          this.events.push({ type: 'reroll', price });
+        }
+        break;
       case 'switch': {
         const r = st.routes[c.route];
         if (live && r) {
@@ -383,6 +433,7 @@ export class Run {
           st.lapDescents = 1;
           st.lapTime = 0;
           st.lapPar = 0;
+          st.rerolls = 0;
           st.hero.ride = { at: LODGE, to: this.choose(LODGE), f: 0 };
           this.startDescent(true);
         }
@@ -398,24 +449,65 @@ export class Run {
 
   // --- Cards --------------------------------------------------------------------------------
 
-  drawCard(): void {
-    const st = this.state;
-    const total = st.deck.reduce((sum, id) => sum + CARDS[id].weight, 0);
+  /** A card from `pool`, by draw weight. */
+  private pickCard(pool: readonly CardId[]): CardId {
+    const total = pool.reduce((sum, id) => sum + CARDS[id].weight, 0);
     let roll = this.rng.next() * total;
-    let pick = st.deck[0];
-    for (const id of st.deck) {
+    for (const id of pool) {
       roll -= CARDS[id].weight;
-      if (roll < 0) {
-        pick = id;
-        break;
-      }
+      if (roll < 0) return id;
     }
-    st.hand.push(pick);
+    return pool[0];
+  }
+
+  drawCard(): void {
+    this.addToHand(this.pickCard(this.state.deck));
+  }
+
+  /** Into the hand; a full hand burns its oldest card for 1 intel. */
+  private addToHand(card: CardId): void {
+    const st = this.state;
+    st.hand.push(card);
     if (st.hand.length > HAND_SIZE) {
       const dropped = st.hand.shift()!;
       st.intel++;
       this.events.push({ type: 'discard', card: dropped });
     }
+  }
+
+  // --- The shop -----------------------------------------------------------------------------
+
+  /** What a card costs in the shop this lap. */
+  price(card: CardId): number {
+    return Math.round(CARDS[card].cost * (1 + SHOP.lapScale * (this.state.lap - 1)));
+  }
+
+  rerollPrice(): number {
+    return SHOP.rerollBase + SHOP.rerollStep * this.state.rerolls;
+  }
+
+  /** Three fresh offers from your deck, no two alike while the deck allows. */
+  rollShop(): void {
+    const st = this.state;
+    const pool = st.deck.filter((id) => CARDS[id].weight > 0);
+    const offers: ShopOffer[] = [];
+    for (let k = 0; k < SHOP.size && pool.length; k++) {
+      const fresh = pool.filter((id) => !offers.some((o) => o.card === id));
+      const card = this.pickCard(fresh.length ? fresh : pool);
+      offers.push({ kind: 'card', card, price: this.price(card) });
+    }
+    st.shop = offers;
+  }
+
+  private buy(index: number): void {
+    const st = this.state;
+    const offer = st.shop[index];
+    if (!offer || st.points < offer.price) return;
+    st.points -= offer.price;
+    st.record.bought++;
+    this.addToHand(offer.card);
+    this.events.push({ type: 'bought', card: offer.card, price: offer.price });
+    this.rollShop();
   }
 
   private place(handIndex: number, x: number, y: number): void {
@@ -500,12 +592,7 @@ export class Run {
     const all: BossKind[] = ['widow', 'yetiKing', 'kickback'];
     const fresh = all.filter((b) => !st.record.bosses.includes(b) && !st.hand.includes(DOSSIER_FOR[b]));
     const boss = this.rng.pick(fresh.length ? fresh : all);
-    st.hand.push(DOSSIER_FOR[boss]);
-    if (st.hand.length > HAND_SIZE) {
-      const dropped = st.hand.shift()!;
-      st.intel++;
-      this.events.push({ type: 'discard', card: dropped });
-    }
+    this.addToHand(DOSSIER_FOR[boss]);
     this.events.push({ type: 'dossier', card: DOSSIER_FOR[boss], boss });
   }
 
@@ -798,7 +885,7 @@ export class Run {
     if (isPiste(this.map, i)) {
       // Base chips for the run itself, like a Balatro hand's base: one a tile, two in a chute.
       const steep = p.kind === 'chute';
-      st.lapHand.chips += steep ? 2 : 1;
+      this.earn(steep ? 2 : 1);
       this.line('The run', steep ? 2 : 1, 0, false);
       if (steep) {
         st.lapHand.mult += ROUTE_TUNING.steepMult;
@@ -837,26 +924,34 @@ export class Run {
   private completeLap(): void {
     const st = this.state;
     st.record.descents++;
+    // A fast lap pays a bonus on every chip of it, at its own mult.
     const bonus = Math.min(2, Math.max(0, (st.lapPar / Math.max(st.lapTime, 1) - 1) * 2));
     if (bonus > 0.01) {
-      st.lapHand.mult += bonus;
+      const pts = st.lapHand.chips * bonus;
+      st.points += pts;
+      st.lapPoints += pts;
       this.line('Fast lap', 0, bonus);
     }
     const hand = st.lapHand;
-    const points = Math.round(hand.chips * hand.mult);
-    st.cash += points;
-    st.record.bestLap = Math.max(st.record.bestLap, points);
+    // The day's pay goes home: bounties for everything you shot this lap.
+    st.cash += st.lapBounty;
+    st.record.bestLap = Math.max(st.record.bestLap, st.lapBounty);
     this.events.push({
       type: 'lap',
       lap: st.lap,
       chips: hand.chips,
       mult: hand.mult,
-      points,
+      points: Math.round(st.lapPoints),
+      kills: st.lapKills,
+      bounty: st.lapBounty,
       lines: hand.lines,
       lapTime: st.lapTime,
       descents: st.lapDescents,
     });
     st.lapHand = freshHand(st.permanentMult);
+    st.lapPoints = 0;
+    st.lapKills = 0;
+    st.lapBounty = 0;
     this.drawCard();
     st.hero.airborne = false;
     st.status = 'lodge';
@@ -866,8 +961,13 @@ export class Run {
     const st = this.state;
     const bail = hasGadget(st.equipment, 'sled') ? 0.8 : 0.6;
     const fraction = status === 'retreated' || status === 'won' ? 1 : status === 'bailed' ? bail : 0.3;
+    // Beating the Baron mid-lap banks the lap's bounties too; bailing or wiping out loses them.
+    if (status === 'won') {
+      st.cash += st.lapBounty;
+      st.lapBounty = 0;
+    }
     const payout: Payout = {
-      cash: Math.floor(st.cash * fraction * RATINGS[st.rating].payout),
+      cash: Math.floor(st.cash * fraction),
       intel: Math.floor(st.intel * fraction),
       scrap: Math.floor(st.scrap * fraction),
       fraction,
@@ -889,10 +989,19 @@ export class Run {
     if (counts) l.count++;
   }
 
+  /** Chips earn points at the mult you have right now: build mult first, then cash in. */
+  private earn(chips: number): void {
+    const st = this.state;
+    const pts = chips * st.lapHand.mult;
+    st.lapHand.chips += chips;
+    st.points += pts;
+    st.lapPoints += pts;
+  }
+
   private addChips(label: string, chips: number, mult: number, x: number, y: number): void {
     const hand = this.state.lapHand;
-    hand.chips += chips;
     hand.mult += mult;
+    this.earn(chips);
     this.line(label, chips, mult);
     this.events.push({ type: 'chips', label, chips, mult, x, y });
   }
@@ -1023,6 +1132,8 @@ export class Run {
     const scale = levelScale(e.level, st.rating);
     const chips = Math.round(def.chips * scale.chips * (st.weather?.kind === 'whiteout' ? WEATHER.whiteoutChips : 1));
     st.record.kills++;
+    st.lapKills++;
+    st.lapBounty += Math.round(def.bounty * scale.chips * RATINGS[st.rating].payout);
     st.lapHand.combo++;
     this.events.push({ type: 'kill', enemy: e.id, kind: e.kind, x: e.x, y: e.y, chips });
     this.addChips(KILL_LINES[e.kind], chips, 0, e.x, e.y);
@@ -1033,7 +1144,7 @@ export class Run {
 
     // Loot, Loop Hero style: cards, gear and resources.
     const loot = st.weather?.kind === 'night' ? WEATHER.nightLoot : 1;
-    if (this.rng.chance(Math.min(1, def.cardChance * loot))) {
+    if (this.rng.chance(Math.min(1, def.cardChance * KILL_CARDS * loot))) {
       this.drawCard();
       this.events.push({ type: 'loot', what: 'card', label: 'Card', x: e.x, y: e.y });
     }
@@ -1061,9 +1172,9 @@ export class Run {
       this.events.push({ type: 'loot', what: 'scrap', label: `+${scrap} scrap`, x: e.x, y: e.y });
     }
 
-    // Intel fragments, once the mountain has a lift of your own: three make a dossier.
+    // Intel fragments, from the second lap on: three make a dossier.
     const fragmentChance = FRAGMENT_CHANCE[e.kind] ?? 0;
-    if (fragmentChance > 0 && st.routes.some((r) => r.kind === 'lift') && this.rng.chance(fragmentChance)) {
+    if (fragmentChance > 0 && st.lap >= FRAGMENT_LAP && this.rng.chance(fragmentChance)) {
       st.fragments++;
       this.events.push({ type: 'fragment', count: st.fragments, x: e.x, y: e.y });
       if (st.fragments >= FRAGMENTS_PER_DOSSIER) {
