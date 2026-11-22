@@ -1207,6 +1207,7 @@ h2 .count {
 }
 
 .offer.special .ckind,
+.offer.action .ckind,
 .offer.weather .ckind {
   background: var(--red);
   color: var(--paper);
@@ -1341,6 +1342,12 @@ h2 .count {
 
 .card.special .ckind {
   background: var(--red);
+  color: var(--paper);
+}
+
+.card.weather .ckind,
+.card.action .ckind {
+  background: repeating-linear-gradient(135deg, var(--red) 0 4px, var(--deep-red) 4px 8px);
   color: var(--paper);
 }
 

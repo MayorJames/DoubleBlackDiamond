@@ -537,8 +537,397 @@ const ART: Record<CardId, (px: Px) => void> = {
     px.rect(6, 18, 20, 1, 'k');
     px.rect(6, 4, 1, 15, 'k');
     px.rect(25, 4, 1, 15, 'k');
-    blackDiamond(px, 16, 6, 5);
+    blackDiamond(px, 16, 6, 4);
     px.rect(9, 16, 14, 1, 'r');
+  },
+  // --- Trail ---------------------------------------------------------------------------------
+  rail(px) {
+    sky(px, 0, 0, S, 16);
+    range(px, 0, S, 16, 8, 81, { tones: ['w', 's', 'l', 'm'] });
+    snowField(px, 0, 16, S, 16, 81);
+    // A long rail with a red top, and the skier grinding it, sparks flying.
+    px.rect(2, 22, 28, 2, 'r');
+    px.rect(2, 21, 28, 1, 'k');
+    px.rect(2, 24, 28, 1, 'k');
+    for (const x of [5, 15, 26]) px.rect(x, 25, 1, 5, 'k');
+    px.rect(1, 29, 30, 1, 'l');
+    px.grid(SKIER, 12, 13);
+    for (const [x, y] of [[10, 20], [9, 18], [21, 20], [23, 19]] as const) px.set(x, y, 'r');
+  },
+  corduroy(px) {
+    sky(px, 0, 0, S, 8);
+    range(px, 0, S, 8, 5, 83);
+    // Fresh lines raked to the horizon, and the groomer's tracks.
+    px.rect(0, 8, S, 24, 'w');
+    for (let k = -8; k < 40; k += 3) px.line(16 + (k - 16) * 0.2, 8, k, 32, 's');
+    px.rect(0, 8, S, 1, 'l');
+    // The snowcat, small on the horizon.
+    px.rect(20, 9, 8, 3, 'r');
+    px.rect(19, 12, 10, 1, 'k');
+    px.rect(25, 7, 3, 2, 'k');
+  },
+  crevasse(px) {
+    sky(px, 0, 0, S, 12);
+    range(px, 0, S, 12, 7, 85, { tones: ['w', 's', 'l', 'm'] });
+    snowField(px, 0, 12, S, 20, 85);
+    // A jagged blue-black gash across the snow, and a skier leaping it.
+    px.poly([[0, 22], [8, 20], [14, 23], [22, 19], [32, 21], [32, 25], [22, 23], [14, 27], [7, 24], [0, 26]], (x, y) => (y < 22 && bayer(x, y, 8) ? 'd' : 'k'));
+    for (let x = 0; x < S; x++) if (px.is(x, 20, 'k') || px.is(x, 21, 'k')) px.set(x, 19, 'l');
+    px.grid(SKIER, 16, 8);
+    for (const [y, l] of [[10, 4], [12, 6]] as const) px.rect(15 - l, y, l, 1, 'l');
+  },
+  powderStash(px) {
+    sky(px, 0, 0, S, 10);
+    pine(px, 5, 18, 10);
+    pine(px, 27, 17, 9);
+    snowField(px, 0, 14, S, 18, 87);
+    // Deep pillows of powder with a skier buried to the waist.
+    for (const [x, y, r] of [[7, 22, 6], [18, 20, 7], [28, 24, 6], [12, 28, 6], [25, 30, 5]] as const) {
+      px.disc(x + 1, y + 1, r, 'l');
+      px.disc(x, y, r, (i, j) => (j > y + 1 && (i + j) % 3 === 0 ? 's' : 'w'));
+    }
+    px.grid(SKIER.slice(0, 5), 15, 13);
+  },
+  waxStation(px) {
+    backdrop(px, 14, 89);
+    trailBand(px, 24, 5);
+    // A bench with skis on it, an iron, and a pot of red wax.
+    px.rect(3, 17, 22, 2, 'd');
+    px.rect(3, 16, 22, 1, 'k');
+    for (const x of [4, 23]) px.rect(x, 19, 1, 5, 'k');
+    px.rect(5, 14, 18, 1, 'k');
+    px.rect(5, 15, 18, 1, 'r');
+    px.rect(14, 10, 5, 3, 'm');
+    px.rect(13, 13, 7, 1, 'k');
+    px.rect(16, 8, 1, 2, 'k');
+    smoke(px, 16, 7, 2, 1);
+    px.rect(25, 13, 5, 4, 'r');
+    px.rect(25, 12, 5, 1, 'k');
+    px.rect(26, 14, 3, 1, 'q');
+  },
+  // --- Roadside ------------------------------------------------------------------------------
+  ammoDump(px) {
+    backdrop(px, 14, 91);
+    // Crates stencilled with red, a pile of shells, and a tarp.
+    for (const [x, y, w] of [[3, 18, 12], [15, 20, 10], [8, 11, 10]] as const) {
+      px.rect(x, y, w, 8, (i, j) => (i === x || i === x + w - 1 || j === y ? 'k' : (i + j) % 5 === 0 ? 'd' : 'm'));
+      px.rect(x + 2, y + 3, w - 4, 2, 'r');
+    }
+    for (let k = 0; k < 5; k++) {
+      px.rect(26 + (k % 3) * 2, 24 - Math.floor(k / 3) * 3, 1, 3, 'r');
+      px.set(26 + (k % 3) * 2, 23 - Math.floor(k / 3) * 3, 'k');
+    }
+    px.rect(1, 28, 30, 1, 'l');
+  },
+  watchtower(px) {
+    sky(px, 0, 0, S, 22);
+    range(px, 0, S, 22, 10, 93, { tones: ['w', 's', 'l', 'm'] });
+    snowField(px, 0, 22, S, 10, 93);
+    pine(px, 4, 28, 12);
+    // A tall wooden tower with a hut on top and a searchlight beam.
+    px.line(12, 30, 15, 10, 'k');
+    px.line(22, 30, 19, 10, 'k');
+    for (let y = 14; y < 30; y += 5) px.line(13, y + 3, 21, y, 'd');
+    px.rect(12, 6, 10, 5, 'd');
+    px.rect(11, 4, 12, 2, 'k');
+    px.rect(14, 7, 6, 2, 'r');
+    px.poly([[22, 7], [32, 2], [32, 12]], (x, y) => (bayer(x, y, 7) ? 'w' : null));
+  },
+  firstAid(px) {
+    backdrop(px, 15, 95);
+    // A first aid post: a box on a pole, a red cross, a rolled stretcher, a sledge.
+    px.rect(15, 14, 2, 14, 'k');
+    px.rect(8, 6, 16, 10, 'w');
+    px.rect(8, 6, 16, 1, 'k');
+    px.rect(8, 15, 16, 1, 'k');
+    px.rect(8, 6, 1, 10, 'k');
+    px.rect(23, 6, 1, 10, 'k');
+    px.rect(15, 8, 2, 6, 'r');
+    px.rect(12, 10, 8, 2, 'r');
+    px.rect(3, 25, 12, 2, 'r');
+    px.rect(2, 27, 14, 1, 'k');
+    px.rect(20, 24, 10, 3, 'l');
+    px.rect(20, 24, 10, 1, 'k');
+  },
+  jammer(px) {
+    sky(px, 0, 0, S, 18, 'l', 's');
+    snowField(px, 0, 18, S, 14, 97);
+    // A box with dials and an aerial, spitting red zigzags of noise.
+    px.rect(8, 16, 16, 11, 'd');
+    px.rect(8, 16, 16, 1, 'k');
+    px.rect(8, 26, 16, 1, 'k');
+    px.disc(13, 21, 2.5, 'k');
+    px.set(13, 21, 'r');
+    px.rect(17, 19, 5, 1, 'l');
+    px.rect(17, 22, 5, 1, 'l');
+    px.rect(15, 4, 1, 12, 'k');
+    for (const side of [-1, 1])
+      for (let k = 0; k < 3; k++) {
+        const x0 = 16 + side * (4 + k * 4);
+        px.line(x0, 4 + k * 2, x0 + side * 2, 7 + k * 2, 'r');
+        px.line(x0 + side * 2, 7 + k * 2, x0, 10 + k * 2, 'r');
+      }
+  },
+  deadDrop(px) {
+    backdrop(px, 12, 99);
+    pine(px, 26, 22, 14);
+    // A rock with a loose stone pried up, and an envelope stamped red.
+    px.poly([[3, 27], [5, 19], [12, 15], [20, 17], [23, 27]], (x, y) => (y < 19 ? 'w' : x > 16 ? 'd' : 'm'));
+    px.line(3, 27, 5, 19, 'k');
+    px.line(5, 19, 12, 15, 'k');
+    px.line(12, 15, 20, 17, 'k');
+    px.line(20, 17, 23, 27, 'k');
+    px.rect(12, 22, 12, 7, 'w');
+    px.rect(12, 22, 12, 1, 'k');
+    px.rect(12, 28, 12, 1, 'k');
+    px.rect(12, 22, 1, 7, 'k');
+    px.rect(23, 22, 1, 7, 'k');
+    px.line(12, 22, 17, 26, 'k');
+    px.line(23, 22, 18, 26, 'k');
+    px.rect(19, 24, 3, 3, 'r');
+  },
+  scrapYard(px) {
+    backdrop(px, 14, 101);
+    // Heaps of junk: a wrecked snowmobile, skis, a wheel, scrap metal.
+    px.poly([[1, 28], [8, 16], [16, 20], [22, 14], [31, 28]], (x, y) => ((x * 3 + y * 7) % 5 === 0 ? 'd' : (x + y) % 3 === 0 ? 'l' : 'm'));
+    px.line(1, 28, 8, 16, 'k');
+    px.line(8, 16, 16, 20, 'k');
+    px.line(16, 20, 22, 14, 'k');
+    px.line(22, 14, 31, 28, 'k');
+    px.rect(8, 21, 8, 3, 'r');
+    px.disc(23, 23, 3, 'k');
+    px.disc(23, 23, 1.5, 'm');
+    px.line(4, 12, 10, 26, 'k');
+    px.line(6, 12, 12, 26, 'd');
+    px.rect(0, 28, S, 1, 'k');
+  },
+  ticketBooth(px) {
+    backdrop(px, 15, 103);
+    trailBand(px, 25, 4);
+    // A little booth with a striped awning, a window and a roll of tickets.
+    px.rect(8, 12, 16, 13, 'w');
+    px.rect(8, 12, 1, 13, 'k');
+    px.rect(23, 12, 1, 13, 'k');
+    px.rect(6, 8, 20, 4, (x) => (Math.floor(x / 2) % 2 ? 'r' : 'w'));
+    px.rect(6, 7, 20, 1, 'k');
+    px.rect(6, 12, 20, 1, 'k');
+    px.rect(11, 15, 10, 5, 'm');
+    px.rect(11, 15, 10, 1, 'k');
+    px.rect(13, 17, 2, 2, 'k');
+    px.rect(24, 17, 6, 3, 'r');
+    px.rect(24, 17, 6, 1, 'q');
+    for (const x of [25, 27, 29]) px.set(x, 18, 'w');
+  },
+  fuelDrums(px) {
+    backdrop(px, 14, 105);
+    // Red drums with hazard plates, one tipped over and leaking, and a match.
+    for (const [x, y] of [[4, 14], [13, 14]] as const) {
+      px.rect(x, y, 8, 13, 'r');
+      px.rect(x, y, 8, 1, 'k');
+      px.rect(x, y + 4, 8, 1, 'q');
+      px.rect(x, y + 9, 8, 1, 'q');
+      px.rect(x, y + 12, 8, 1, 'k');
+      px.rect(x + 2, y + 5, 4, 3, 'w');
+      px.set(x + 3, y + 6, 'k');
+    }
+    px.ellipse(26, 25, 5, 3, 'r');
+    px.ellipse(26, 25, 3, 1.5, 'q');
+    px.rect(21, 28, 10, 1, 'd');
+    px.line(26, 12, 29, 18, 'k');
+    px.set(26, 11, 'r');
+    px.set(25, 10, 'q');
+  },
+  apresBar(px) {
+    backdrop(px, 16, 107);
+    // A chalet bar: a window glowing red, a sign with a mug, a bench and a fondue pot.
+    px.rect(4, 12, 22, 14, (_x, y) => (y % 3 === 0 ? 'k' : y % 3 === 1 ? 'm' : 'd'));
+    px.poly([[2, 13], [15, 5], [28, 13]], (x, y) => (y < 9 || x < 10 ? 'w' : 's'));
+    px.line(2, 13, 15, 5, 'k');
+    px.line(15, 5, 28, 13, 'k');
+    px.rect(7, 16, 8, 5, 'r');
+    px.rect(7, 16, 8, 1, 'k');
+    px.rect(10, 16, 1, 5, 'k');
+    px.rect(18, 15, 6, 6, 'w');
+    px.rect(19, 16, 3, 4, 'r');
+    px.rect(22, 17, 1, 2, 'k');
+    px.rect(2, 27, 26, 1, 'k');
+    px.ellipse(28, 26, 3, 2, 'k');
+    smoke(px, 28, 23, 2, 2);
+  },
+  // --- Landscape -----------------------------------------------------------------------------
+  glacier(px) {
+    sky(px, 0, 0, S, 14);
+    mountain(px, -6, 38, 22, 14, 3, { snow: 18, seed: 11, tones: ['w', 's', 'l', 'm'] });
+    // A tongue of blue-white ice with crevasse lines, spilling into the valley.
+    px.poly([[6, 14], [26, 14], [32, 32], [0, 32]], (x, y) => ((x * 2 + y) % 11 === 0 ? 'l' : y > 26 ? 's' : 'w'));
+    for (const [x, y, l] of [[8, 20, 6], [15, 24, 8], [20, 18, 5], [5, 28, 7]] as const) px.line(x, y, x + l, y + 1, 'm');
+    px.line(6, 14, 0, 32, 'd');
+    px.line(26, 14, 32, 32, 'd');
+  },
+  cliff(px) {
+    sky(px, 0, 0, S, S, 's', 'w');
+    cloud(px, 8, 6, 10, 9);
+    // A sheer dark face dropping away, a skier tucked right along its edge.
+    px.poly([[14, 0], [32, 0], [32, 32], [20, 32], [17, 14]], (x, y) => ((x + y * 3) % 7 === 0 ? 'k' : x < 22 ? 'm' : 'd'));
+    px.line(14, 0, 17, 14, 'k');
+    px.line(17, 14, 20, 32, 'k');
+    px.rect(0, 22, 18, 10, 'w');
+    px.rect(0, 22, 18, 1, 'l');
+    px.grid(SKIER, 8, 14);
+  },
+  aspens(px) {
+    sky(px, 0, 0, S, 22);
+    snowField(px, 0, 22, S, 10, 109);
+    // White trunks with black eyes, and round pale crowns.
+    for (const [x, h] of [[6, 18], [14, 22], [23, 17], [28, 20]] as const) {
+      px.ellipse(x + 1, 31 - h, 4, 5, 'd');
+      px.ellipse(x, 30 - h, 4, 5, (i, j) => (bayer(i, j, 6) ? 'm' : 'l'));
+      px.rect(x, 30 - h + 3, 2, h - 3, 'w');
+      px.rect(x - 1, 30 - h + 3, 1, h - 3, 'l');
+      for (let y = 30 - h + 6; y < 29; y += 4) px.set(x + (y % 2), y, 'k');
+    }
+    px.rect(0, 30, S, 1, 'l');
+  },
+  hotSpring(px) {
+    backdrop(px, 12, 111);
+    pine(px, 4, 20, 10);
+    pine(px, 28, 21, 11);
+    // A steaming pool ringed with dark rocks.
+    px.ellipse(16, 24, 13, 6, 'd');
+    px.ellipse(16, 24, 11, 4.5, (x, y) => ((x + y) % 5 === 0 ? 'w' : 's'));
+    for (const [x, y] of [[4, 22], [8, 27], [16, 29], [24, 27], [28, 22]] as const) px.ellipse(x, y, 2, 1.3, 'k');
+    smoke(px, 12, 18, 3, 3);
+    smoke(px, 20, 17, 3, 7);
+  },
+  frozenLake(px) {
+    sky(px, 0, 0, S, 12);
+    range(px, 0, S, 12, 8, 113);
+    pine(px, 3, 16, 7);
+    pine(px, 29, 17, 8);
+    // A wide sheet of ice catching the light, and a skater's figure-eights.
+    px.ellipse(16, 23, 17, 8, 'm');
+    px.ellipse(16, 23, 15.5, 7, (x, y) => ((x - y) % 9 === 0 || (x - y) % 9 === 1 ? 'w' : 's'));
+    px.ellipse(11, 23, 4, 2, (x, y) => (px.is(x, y, 'w') ? 'w' : null));
+    for (let a = 0; a < 6.3; a += 0.2) {
+      px.set(12 + Math.cos(a) * 4, 23 + Math.sin(a) * 1.6, 'l');
+      px.set(20 + Math.cos(a) * 4, 23 + Math.sin(a) * 1.6, 'l');
+    }
+  },
+  windRidge(px) {
+    sky(px, 0, 0, S, S, 's', 'w');
+    // A knife-edge ridge with snow blowing off it in streamers.
+    mountain(px, -4, 40, 32, 18, 8, { snow: 14, seed: 17, lean: 0.4 });
+    for (let k = 0; k < 6; k++) px.line(18 + k, 8 + k * 2, 32, 4 + k * 3, k % 2 ? 'w' : 'l');
+    for (let k = 0; k < 8; k++) px.rect((k * 7) % 30, 2 + (k * 5) % 10, 3, 1, 'l');
+  },
+  hamlet(px) {
+    backdrop(px, 13, 115);
+    // A cluster of chalets with red shutters, smoke from two chimneys.
+    const chalet = (x: number, y: number, w: number) => {
+      px.rect(x, y, w, 9, 'w');
+      px.rect(x, y, 1, 9, 'k');
+      px.rect(x + w - 1, y, 1, 9, 'k');
+      px.poly([[x - 2, y + 1], [x + w / 2, y - 6], [x + w + 1, y + 1]], (i, j) => (j < y - 2 || i < x + w / 2 ? 'w' : 's'));
+      px.line(x - 2, y + 1, x + w / 2, y - 6, 'k');
+      px.line(x + w / 2, y - 6, x + w + 1, y + 1, 'k');
+      px.rect(x + 2, y + 3, 2, 3, 'r');
+      px.rect(x + w - 4, y + 3, 2, 3, 'r');
+    };
+    chalet(3, 19, 10);
+    chalet(18, 21, 11);
+    chalet(10, 14, 9);
+    smoke(px, 14, 6, 2, 3);
+    smoke(px, 24, 12, 2, 5);
+    px.rect(0, 30, S, 1, 'l');
+  },
+  // --- Weather and actions --------------------------------------------------------------------
+  bluebird(px) {
+    px.vgrad(0, 0, S, 20, 'l', 'w');
+    px.disc(24, 7, 5, (x, y) => (bayer(x, y, 4) ? 's' : 'w'));
+    px.disc(24, 7, 3, 'w');
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      px.set(24 + Math.cos(a) * 7, 7 + Math.sin(a) * 7, 'm');
+    }
+    mountain(px, -6, 40, 32, 12, 12, { snow: 10, seed: 19 });
+    px.grid(SKIER, 4, 22);
+    px.set(10, 21, 'r');
+  },
+  blizzard(px) {
+    px.rect(0, 0, S, S, 'l');
+    pine(px, 8, 30, 16, { fill: 'm', shade: 'd', edge: 'd' });
+    pine(px, 24, 28, 12, { fill: 's', shade: 'l', edge: 'l' });
+    for (let k = 0; k < 26; k++) px.line((k * 11) % 36 - 4, (k * 7) % 32, (k * 11) % 36 + 3, (k * 7) % 32 + 1, k % 3 ? 'w' : 's');
+    px.rect(0, 0, S, S, (x, y) => (bayer(x + y, y, 3) ? 'w' : null));
+  },
+  supplyDrop(px) {
+    sky(px, 0, 0, S, 22);
+    snowField(px, 0, 22, S, 10, 117);
+    // A crate swinging down under a red-and-white parachute.
+    px.ellipse(16, 8, 11, 6, (x, y) => (y > 8 ? null : Math.floor(x / 3) % 2 ? 'r' : 'w'));
+    px.line(5, 8, 27, 8, 'k');
+    for (const x of [6, 11, 16, 21, 26]) px.line(x, 8, 16, 16, 'k');
+    px.rect(12, 16, 9, 7, 'm');
+    px.rect(12, 16, 9, 1, 'k');
+    px.rect(12, 22, 9, 1, 'k');
+    px.rect(15, 18, 3, 3, 'r');
+    px.ellipse(16, 28, 5, 1, 'l');
+  },
+  pepTalk(px) {
+    px.rect(0, 0, S, S, (x, y) => (bayer(x, y, 3) ? 's' : 'w'));
+    // A coach with a megaphone and a speech burst.
+    px.sprite('guard', 2, 12, { recolor: { w: 'r' } });
+    px.poly([[14, 18], [20, 14], [20, 22]], 'k');
+    px.rect(12, 17, 3, 2, 'k');
+    px.poly([[20, 4], [31, 2], [30, 12], [24, 13]], 'w');
+    px.line(20, 4, 31, 2, 'k');
+    px.line(31, 2, 30, 12, 'k');
+    px.line(30, 12, 24, 13, 'k');
+    px.line(24, 13, 20, 4, 'k');
+    px.rect(24, 5, 2, 4, 'r');
+    px.rect(24, 10, 2, 1, 'r');
+  },
+  airstrike(px) {
+    sky(px, 0, 0, S, 18, 'l', 's');
+    snowField(px, 0, 18, S, 14, 119);
+    // A plane overhead, a falling bomb, and a burst on the snow.
+    px.rect(4, 4, 12, 2, 'k');
+    px.rect(8, 2, 3, 6, 'k');
+    px.rect(2, 3, 2, 2, 'k');
+    px.rect(13, 9, 2, 3, 'k');
+    px.set(13, 12, 'r');
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      px.line(20, 25, 20 + Math.cos(a) * (6 + (k % 2) * 3), 25 + Math.sin(a) * (4 + (k % 2) * 2), k % 2 ? 'r' : 'q');
+    }
+    px.disc(20, 25, 3, 'w');
+  },
+  intelBrief(px) {
+    px.rect(0, 0, S, S, (x, y) => (bayer(x, y, 4) ? 'd' : 'k'));
+    // An open folder: a map with a red X, a photo, and a TOP SECRET band.
+    px.rect(3, 6, 26, 20, 'l');
+    px.rect(3, 6, 26, 1, 'w');
+    px.rect(16, 6, 1, 20, 'm');
+    for (let k = 0; k < 4; k++) px.line(5, 10 + k * 4, 14, 9 + k * 4, 'm');
+    px.line(7, 18, 11, 22, 'r');
+    px.line(11, 18, 7, 22, 'r');
+    px.rect(19, 9, 8, 9, 's');
+    px.rect(21, 11, 4, 4, 'd');
+    px.rect(18, 21, 10, 3, 'r');
+    px.rect(19, 22, 8, 1, 'w');
+  },
+  catTrack(px) {
+    backdrop(px, 10, 121);
+    // A level track cut across the slope, and a snowcat crawling along it.
+    px.rect(0, 18, S, 6, (x, y) => (x % 3 === 0 && y > 18 ? 's' : 'w'));
+    px.rect(0, 17, S, 1, 'l');
+    px.rect(0, 24, S, 1, 'm');
+    px.rect(12, 12, 12, 5, 'r');
+    px.rect(18, 9, 5, 3, 'k');
+    px.rect(19, 10, 3, 1, 's');
+    px.rect(10, 17, 16, 2, 'k');
+    for (let x = 11; x < 26; x += 2) px.set(x, 18, 'm');
+    px.rect(6, 14, 4, 3, 'l');
   },
   chairlift(px) {
     sky(px, 0, 0, S, S);

@@ -29,6 +29,34 @@ export type CardId =
   | 'tunnel'
   | 'checkpoint'
   | 'blackRun'
+  | 'rail'
+  | 'corduroy'
+  | 'crevasse'
+  | 'powderStash'
+  | 'waxStation'
+  | 'ammoDump'
+  | 'watchtower'
+  | 'firstAid'
+  | 'jammer'
+  | 'deadDrop'
+  | 'scrapYard'
+  | 'ticketBooth'
+  | 'fuelDrums'
+  | 'apresBar'
+  | 'glacier'
+  | 'cliff'
+  | 'aspens'
+  | 'hotSpring'
+  | 'frozenLake'
+  | 'windRidge'
+  | 'hamlet'
+  | 'bluebird'
+  | 'blizzard'
+  | 'supplyDrop'
+  | 'pepTalk'
+  | 'airstrike'
+  | 'intelBrief'
+  | 'catTrack'
   | 'chairlift'
   | 'chute'
   | 'whiteout'
@@ -41,7 +69,7 @@ export type CardId =
  * Where a card can go: on the trail, beside the path, any open snow, on a placed tile, or (for
  * routes) on a trail tile with a clear line straight up or down to more trail.
  */
-export type CardKind = 'trail' | 'roadside' | 'landscape' | 'special' | 'route' | 'boss' | 'weather';
+export type CardKind = 'trail' | 'roadside' | 'landscape' | 'special' | 'route' | 'boss' | 'weather' | 'action';
 
 export interface CardDef {
   id: CardId;
@@ -138,6 +166,74 @@ export const CARDS: Record<CardId, CardDef> = {
     'Experts only: each sign on your mountain makes it a step harder, with tougher enemies and richer bounties. Tuck past for 15 chips and +0.3 mult.',
     'You were warned.',
   ),
+  // --- Trail -------------------------------------------------------------------------------------
+  rail: def('rail', 'Grind Rail', 'trail', 2, 1, 45, "Grind it: you're airborne on this tile (no shots either way), your combo goes up by 1, and +15 chips.", 'Boardslide, but make it espionage.'),
+  corduroy: def('corduroy', 'Fresh Corduroy', 'trail', 3, 1, 25, 'Freshly groomed: speed x1.3 here with no hit to your aim. +3 chips.', 'The snowcat came through at dawn.'),
+  crevasse: def(
+    'crevasse',
+    'Crevasse',
+    'trail',
+    1,
+    1,
+    40,
+    "Ski into it and it hurts (10, more on later descents). Fly over it off a kicker on the tile before for +40 chips and +0.5 mult. It's still there next lap.",
+    'Mind the gap.',
+  ),
+  powderStash: def('powderStash', 'Powder Stash', 'trail', 2, 1, 40, 'Slows you to 80%, but heals 5 HP every pass.', 'Bottomless. Probably.'),
+  waxStation: def('waxStation', 'Wax Station', 'trail', 2, 1, 50, 'Every pass waxes your skis: +6% speed for the rest of the lap. It stacks.', 'Hot wax, cold war.'),
+  // --- Roadside ----------------------------------------------------------------------------------
+  ammoDump: def('ammoDump', 'Ammo Dump', 'roadside', 2, 1, 50, 'Within a tile of it you fire 30% faster.', 'Help yourself.'),
+  watchtower: def('watchtower', 'Watchtower', 'roadside', 2, 1, 45, 'Within a tile of it your range is 0.6 tiles longer.', 'You can see the lodge from here.'),
+  firstAid: def('firstAid', 'First Aid Post', 'roadside', 2, 1, 45, 'Within a tile of it you heal 2 HP a second.', 'Plasters, splints, sympathy.'),
+  jammer: def('jammer', 'Radio Jammer', 'roadside', 1, 1, 55, 'Enemies within 1.5 tiles of it lose a quarter of their aim.', 'All they hear is polka.'),
+  deadDrop: def('deadDrop', 'Dead Drop', 'roadside', 1, 1, 60, 'Ski past once a lap for +1 intel, and from lap 2 a half chance of an intel fragment.', 'Under the third rock from the left.'),
+  scrapYard: def('scrapYard', 'Scrap Yard', 'roadside', 2, 1, 40, 'Ski past once a lap for +2 scrap.', 'One spy’s junk.'),
+  ticketBooth: def('ticketBooth', 'Ticket Booth', 'roadside', 2, 1, 35, 'Ski past once a lap for +25 points (more on later laps).', 'Lift passes, cash only.'),
+  fuelDrums: def('fuelDrums', 'Fuel Drums', 'roadside', 1, 1, 50, 'Anything killed within a tile of it explodes, hitting everything within a tile for 12.', 'Highly flammable. Highly useful.'),
+  apresBar: def('apresBar', 'Après Bar', 'roadside', 1, 1, 55, 'Ski past once a lap for +0.5 mult this lap.', 'Fondue, then fisticuffs.'),
+  // --- Landscape ---------------------------------------------------------------------------------
+  glacier: def('glacier', 'Glacier', 'landscape', 2, 1, 45, '+5 max HP and +1 defense.', 'It moves. Slowly. Like the plot.'),
+  cliff: def('cliff', 'Cliff Face', 'landscape', 2, 1, 45, '+6 max HP. Tuck past it on the trail beside for +5 chips a tile.', 'Exposure: the good kind.'),
+  aspens: def('aspens', 'Aspen Stand', 'landscape', 2, 1, 35, '+2% crit. Trail beside it pays 2 chips a tile for the graze.', 'Quaking, as one does.'),
+  hotSpring: def('hotSpring', 'Hot Spring', 'landscape', 2, 1, 50, 'Ski the trail beside it to heal 4 HP a tile.', 'Steam, and suspicious bubbles.'),
+  frozenLake: def('frozenLake', 'Frozen Lake', 'landscape', 2, 1, 40, '+4% speed.', 'Smooth as a cover story.'),
+  windRidge: def('windRidge', 'Wind Ridge', 'landscape', 1, 1, 45, '+2% dodge. Kickers and rails beside it pay double chips.', 'The wind does the work.'),
+  hamlet: def('hamlet', 'Alpine Hamlet', 'landscape', 1, 1, 70, 'Everything in the shop costs 8% less (up to 32% with four).', 'The locals know a guy.'),
+  // --- Weather and actions -----------------------------------------------------------------------
+  bluebird: def(
+    'bluebird',
+    'Bluebird Day',
+    'weather',
+    1,
+    1,
+    60,
+    'For this lap and the next: you aim 20% better and ski 10% faster, but enemies can see you 20% further.',
+    'Not a cloud in the sky. Not a place to hide.',
+  ),
+  blizzard: def(
+    'blizzard',
+    'Blizzard',
+    'weather',
+    1,
+    1,
+    60,
+    'For this lap and the next: everyone skis 25% slower and enemies fire 25% slower. Chips pay half as much again.',
+    'Sideways snow. Sideways everything.',
+  ),
+  supplyDrop: def('supplyDrop', 'Supply Drop', 'action', 2, 0, 45, 'Click anywhere: heal 35% of your max HP right now.', 'Parachute not included.'),
+  pepTalk: def('pepTalk', 'Pep Talk', 'action', 2, 0, 50, 'Click anywhere: +1 mult for the rest of this lap.', '"You are the best spy on this mountain."'),
+  airstrike: def('airstrike', 'Airstrike', 'action', 1, 1, 70, 'Click a tile: 30 damage to every enemy within a tile of it.', 'Danger close.'),
+  intelBrief: def('intelBrief', 'Intel Briefing', 'action', 1, 0, 55, 'Click anywhere: +2 intel and an intel fragment.', 'Burn after reading.'),
+  catTrack: def(
+    'catTrack',
+    'Cat Track',
+    'route',
+    1,
+    1,
+    70,
+    'Lays a path from this trail tile in a straight line over open snow to the next trail: a shortcut, or a slow skate back uphill for another descent.',
+    'Built for snowcats. Used by spies.',
+  ),
   avalanche: def('avalanche', 'Avalanche', 'special', 1, 0, 40, 'Wipes out a placed tile and everything on and around it.', 'Not the snow you ordered.'),
   chairlift: def(
     'chairlift',
@@ -231,7 +327,8 @@ export function canPlace(map: MountainMap, tiles: Tiles, card: CardId, x: number
   if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return false;
   const kind = CARDS[card].kind;
   // Weather covers the whole mountain: click anywhere.
-  if (kind === 'weather') return true;
+  if (kind === 'weather' || kind === 'action') return true;
+  if (card === 'catTrack') return !!crossCourse(map, x, y, (c) => !!tiles[c]);
   // A route can share its junction with a trail card, but can't cross anything you've placed.
   if (kind === 'route') {
     if (ROUTE_OF[card] === 'lift' && map.lifts.filter((l) => l.route >= 0).length >= MAX_LIFTS) return false;
@@ -243,6 +340,29 @@ export function canPlace(map: MountainMap, tiles: Tiles, card: CardId, x: number
   if (kind === 'trail' || kind === 'boss') return isPiste(map, nodeAt(map, x, y));
   if (kind === 'roadside') return isRoadside(map, x, y);
   return !isPath(map, x, y);
+}
+
+/**
+ * A Cat Track from the trail tile at (x, y): straight out in the first direction (right, left,
+ * down, then up) that crosses at least two open cells to trail. Returns the route's cells: the
+ * open ones, then the trail cell it joins.
+ */
+export function crossCourse(map: MountainMap, x: number, y: number, blocked: (c: number) => boolean = () => false): number[] | null {
+  const start = nodeAt(map, x, y);
+  if (start < 0 || map.nodes[start].kind !== 'trail' || map.nodes[start].next.length > 1) return null;
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const cells: number[] = [];
+    for (let xx = x + dx, yy = y + dy; xx >= 0 && yy >= 0 && xx < MAP_W && yy < MAP_H; xx += dx, yy += dy) {
+      const j = nodeAt(map, xx, yy);
+      if (j >= 0) {
+        if (cells.length >= 2 && isPiste(map, j)) return [...cells, cell(xx, yy)];
+        break;
+      }
+      if (blocked(cell(xx, yy))) break;
+      cells.push(cell(xx, yy));
+    }
+  }
+  return null;
 }
 
 const isMountain = (t: TileState | null) => !!t && (t.card === 'boulder' || t.card === 'peak');

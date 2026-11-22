@@ -29,6 +29,7 @@ const KIND_LABEL: Record<CardKind, string> = {
   route: 'Route',
   boss: 'Boss',
   weather: 'Weather',
+  action: 'Action',
 };
 const KIND_HINT: Record<CardKind, string> = {
   trail: 'Goes on the trail itself.',
@@ -38,8 +39,10 @@ const KIND_HINT: Record<CardKind, string> = {
   route: 'Goes on the trail where there is a clear line straight up (lift) or down (chute) to more trail.',
   boss: 'Goes on the trail. Assembled from three intel fragments.',
   weather: 'Click anywhere on the map: it covers the whole mountain.',
+  action: 'Click the map to use it; it happens at once and is gone.',
 };
 const ROUTE_NAME = { lift: 'Chairlift', chute: 'Chute', trail: 'Path' } as const;
+const WEATHER_NAME = { whiteout: 'Whiteout', night: 'Night', bluebird: 'Bluebird', blizzard: 'Blizzard' } as const;
 const STANCE_TEXT: Record<Stance, string> = {
   tuck: '160% speed, 65% aim, +20% dodge. Builds mult on the trail.',
   cruise: 'Steady. No bonuses, no penalties.',
@@ -241,7 +244,7 @@ export class RunUi {
     this.text('run-scrap', String(st.scrap));
     const weather = st.weather;
     document.querySelector('.tb.weather')!.classList.toggle('hidden', !weather);
-    if (weather) this.text('weather-text', `${weather.kind === 'night' ? 'Night' : 'Whiteout'} · ${weather.laps === 1 ? 'this lap' : `${weather.laps} laps`}`);
+    if (weather) this.text('weather-text', `${WEATHER_NAME[weather.kind]} · ${weather.laps === 1 ? 'this lap' : `${weather.laps} laps`}`);
     this.text('run-frag', st.lap >= FRAGMENT_LAP ? `${st.fragments}/3` : `from lap ${FRAGMENT_LAP}`);
     document.querySelectorAll<HTMLButtonElement>('.tb.speed button').forEach((b) =>
       b.classList.toggle('on', Number(b.dataset.speed) === speed),

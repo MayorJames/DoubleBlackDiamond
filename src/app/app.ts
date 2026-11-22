@@ -500,6 +500,8 @@ export class App {
         case 'weather':
           if (e.kind === 'whiteout') this.runUi.banner('Whiteout! Nobody can see far, this lap and next. Kills and grazes pay double.');
           else if (e.kind === 'night') this.runUi.banner('Night falls. Enemies miss more and loot drops more, this lap and next.');
+          else if (e.kind === 'bluebird') this.runUi.banner('Bluebird day! You aim and ski better, but they can see you coming.');
+          else if (e.kind === 'blizzard') this.runUi.banner('Blizzard! Everyone slows down, and chips pay half as much again.');
           else this.runUi.banner('The weather clears.');
           this.sfx.chime();
           break;

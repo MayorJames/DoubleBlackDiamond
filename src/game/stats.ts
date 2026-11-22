@@ -60,6 +60,13 @@ export function computeStats(equipment: Equipment, tiles: Tiles, bonuses: LodgeB
       if (t.card === 'boulder') s.maxHp += 4;
       else if (t.card === 'peak') s.maxHp += 8;
       else if (t.card === 'pines') s.evasion += 0.03;
+      else if (t.card === 'glacier') {
+        s.maxHp += 5;
+        s.defense += 1;
+      } else if (t.card === 'cliff') s.maxHp += 6;
+      else if (t.card === 'aspens') s.crit += 0.02;
+      else if (t.card === 'frozenLake') s.speed += 0.04;
+      else if (t.card === 'windRidge') s.evasion += 0.02;
       if (t.variant === 'dbd') s.maxHp += 40;
     }
   }

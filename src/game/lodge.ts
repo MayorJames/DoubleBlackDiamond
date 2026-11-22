@@ -6,7 +6,7 @@
 import type { CardId } from './cards';
 import type { BossKind } from './enemies';
 import { COURSE_TILES, newPlan, STARTING_TILES, type CourseTile, type MountainPlan, type TileStock } from './mountain';
-import type { Payout, RunStatus } from './run';
+import type { Payout, RunStatus, WeatherKind } from './run';
 import { NO_BONUSES, type LodgeBonuses } from './stats';
 
 export type BuildingId =
@@ -32,25 +32,25 @@ export interface Building {
 }
 
 export const BUILDINGS: Building[] = [
-  { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute card, and sells chute and tunnel tiles for your mountain.', unlocks: ['chute'] },
-  { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache and Powder Field cards, and the Field Hospital: a turncoat medic for the other side.', unlocks: ['cache', 'powder', 'fieldHospital'] },
-  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest and Snowmobile Garage. More danger, more loot.', unlocks: ['sniper', 'garage'] },
+  { id: 'trailCrew', name: 'Trail Crew', cost: { cash: 250, intel: 0, scrap: 3 }, text: 'Unlocks the Chute, Cat Track and Wax Station cards, and sells chute and tunnel tiles for your mountain.', unlocks: ['chute', 'catTrack', 'waxStation'] },
+  { id: 'patrolHut', name: 'Ski Patrol Hut', cost: { cash: 300, intel: 4, scrap: 0 }, text: 'Unlocks Supply Cache, Powder Field, First Aid Post, Powder Stash and Hot Spring, and the Field Hospital: a turncoat medic for the other side.', unlocks: ['cache', 'powder', 'fieldHospital', 'firstAid', 'powderStash', 'hotSpring'] },
+  { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest, Snowmobile Garage, Radio Jammer and Watchtower. More danger, more loot.', unlocks: ['sniper', 'garage', 'jammer', 'watchtower'] },
   { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks the Chairlift, Kicker and Ice Sheet cards, and sells lift tiles for your mountain.', unlocks: ['chairlift', 'kicker', 'ice'] },
-  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak, Avalanche and Demo Shack cards.', unlocks: ['peak', 'avalanche', 'demoShack'] },
-  { id: 'weatherStation', name: 'Weather Station', cost: { cash: 600, intel: 5, scrap: 4 }, text: 'Unlocks the Whiteout and Night weather cards.', unlocks: ['whiteout', 'night'] },
-  { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks the Safehouse card, gadget drops and a second gadget slot.', unlocks: ['safehouse'] },
-  { id: 'rental', name: 'Rental Shop', cost: { cash: 700, intel: 0, scrap: 10 }, text: '+10% speed, and better gear drops.', unlocks: [] },
-  { id: 'sauna', name: 'Sauna', cost: { cash: 800, intel: 6, scrap: 6 }, text: '+25% max HP.', unlocks: [] },
-  { id: 'terrainPark', name: 'Terrain Park', cost: { cash: 450, intel: 0, scrap: 5 }, text: 'Unlocks the Slalom Gates, Snow Tunnel and Checkpoint cards.', unlocks: ['gates', 'tunnel', 'checkpoint'] },
-  { id: 'huntingLodge', name: 'Hunting Lodge', cost: { cash: 650, intel: 4, scrap: 4 }, text: 'Unlocks the Kennel and Yeti Cave cards: fast hounds and big, rich yetis.', unlocks: ['kennel', 'yetiCave'] },
-  { id: 'armory', name: 'Armory', cost: { cash: 850, intel: 6, scrap: 8 }, text: 'You head out with a better pistol, and gear drops a grade better.', unlocks: [] },
+  { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak, Avalanche, Demo Shack, Crevasse, Cliff Face and Glacier cards.', unlocks: ['peak', 'avalanche', 'demoShack', 'crevasse', 'cliff', 'glacier'] },
+  { id: 'weatherStation', name: 'Weather Station', cost: { cash: 600, intel: 5, scrap: 4 }, text: 'Unlocks Whiteout, Night, Bluebird Day and Blizzard, and the Wind Ridge.', unlocks: ['whiteout', 'night', 'bluebird', 'blizzard', 'windRidge'] },
+  { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks Safehouse, Dead Drop and Intel Briefing, gadget drops and a second gadget slot.', unlocks: ['safehouse', 'deadDrop', 'intelBrief'] },
+  { id: 'rental', name: 'Rental Shop', cost: { cash: 700, intel: 0, scrap: 10 }, text: '+10% speed and better gear drops. Unlocks Ticket Booth, Scrap Yard, Alpine Hamlet and Frozen Lake.', unlocks: ['ticketBooth', 'scrapYard', 'hamlet', 'frozenLake'] },
+  { id: 'sauna', name: 'Sauna', cost: { cash: 800, intel: 6, scrap: 6 }, text: '+25% max HP. Unlocks the Après Bar and Pep Talk.', unlocks: ['apresBar', 'pepTalk'] },
+  { id: 'terrainPark', name: 'Terrain Park', cost: { cash: 450, intel: 0, scrap: 5 }, text: 'Unlocks Slalom Gates, Snow Tunnel, Checkpoint and Grind Rail cards.', unlocks: ['gates', 'tunnel', 'checkpoint', 'rail'] },
+  { id: 'huntingLodge', name: 'Hunting Lodge', cost: { cash: 650, intel: 4, scrap: 4 }, text: 'Unlocks the Kennel and Yeti Cave (fast hounds and big, rich yetis) and the Aspen Stand.', unlocks: ['kennel', 'yetiCave', 'aspens'] },
+  { id: 'armory', name: 'Armory', cost: { cash: 850, intel: 6, scrap: 8 }, text: 'You head out with a better pistol, gear drops a grade better, and the best guns turn up. Unlocks Ammo Dump, Fuel Drums and Airstrike.', unlocks: ['ammoDump', 'fuelDrums', 'airstrike'] },
 ];
 
 /** Cards you own from the start. */
-export const STARTER_DECK: CardId[] = ['patrol', 'cabin', 'moguls', 'pines', 'boulder'];
+export const STARTER_DECK: CardId[] = ['patrol', 'cabin', 'moguls', 'pines', 'boulder', 'corduroy', 'supplyDrop'];
 
 /** How many different cards a deck can hold, at most and at least. */
-export const DECK_MAX = 8;
+export const DECK_MAX = 14;
 export const DECK_MIN = 4;
 
 export interface Profile {
@@ -72,7 +72,7 @@ export interface Profile {
   mountain: MountainPlan;
   tiles: TileStock;
   /** The last expedition's weather and how it ended, for the town to echo. */
-  lastRun: { weather: 'clear' | 'whiteout' | 'night'; status: RunStatus } | null;
+  lastRun: { weather: WeatherKind | 'clear'; status: RunStatus } | null;
 }
 
 export const newProfile = (seed = 'FIRSTRUN'): Profile => ({

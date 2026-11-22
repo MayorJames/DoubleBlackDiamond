@@ -465,7 +465,7 @@ interface Puff {
   life: number;
 }
 
-type Weather = 'clear' | 'whiteout' | 'night';
+type Weather = 'clear' | 'whiteout' | 'night' | 'bluebird' | 'blizzard';
 
 /** A townsperson strolling the street: where, which way, how fast, and what they look like. */
 interface Walker {
@@ -733,14 +733,15 @@ export class LodgeScene {
       g.fillStyle = 'rgba(229,32,46,0.35)';
       g.fillRect(126, B - 2, 76, 6);
     }
-    const flakes = this.weather === 'whiteout' ? 260 : 90;
+    const stormy = this.weather === 'whiteout' || this.weather === 'blizzard';
+    const flakes = stormy ? 260 : this.weather === 'bluebird' ? 0 : 90;
     for (let k = 0; k < flakes; k++) {
       const speed = 6 + (k % 5) * 3;
       const y = (k * 37 + t * speed) % (SCENE_H + 4);
-      const x = (k * 53 + Math.sin(t * 0.8 + k) * 3 + t * (this.weather === 'whiteout' ? 14 : 2)) % SCENE_W;
+      const x = (k * 53 + Math.sin(t * 0.8 + k) * 3 + t * (stormy ? 14 : 2)) % SCENE_W;
       dot(x, y, k % 7 === 0 ? 's' : 'w', k % 11 === 0 ? 2 : 1, k % 11 === 0 ? 2 : 1);
     }
-    if (this.weather === 'whiteout') {
+    if (stormy) {
       g.fillStyle = 'rgba(255,255,255,0.28)';
       g.fillRect(0, 0, SCENE_W, SCENE_H);
     }

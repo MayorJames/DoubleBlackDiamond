@@ -3,7 +3,7 @@
 // way a junction isn't sending you, and the skier and enemies on top. Everything is drawn at art
 // resolution (16px tiles) and scaled up by a whole number so pixels stay crisp.
 
-import { CARDS, type CardId, type TileState } from '../game/cards';
+import { CARDS, crossCourse, type CardId, type TileState } from '../game/cards';
 import { MAP_H, MAP_W, TILE } from '../game/constants';
 import { isBoss, type Enemy } from '../game/enemies';
 import { dirOf, rideNode, type Dir, type MountainMap, type Segment } from '../game/map';
@@ -34,10 +34,24 @@ import { Atlas, type SpriteName } from './sprites';
 export const ART_W = MAP_W * TILE;
 export const ART_H = MAP_H * TILE;
 
-const TILE_SPRITES: Record<
-  Exclude<CardId, 'avalanche' | 'chairlift' | 'chute' | 'whiteout' | 'night' | 'dossierWidow' | 'dossierYetiKing' | 'dossierKickback'>,
-  SpriteName
-> = {
+type SpecialCard =
+  | 'avalanche'
+  | 'chairlift'
+  | 'chute'
+  | 'catTrack'
+  | 'whiteout'
+  | 'night'
+  | 'bluebird'
+  | 'blizzard'
+  | 'supplyDrop'
+  | 'pepTalk'
+  | 'airstrike'
+  | 'intelBrief'
+  | 'dossierWidow'
+  | 'dossierYetiKing'
+  | 'dossierKickback';
+
+const TILE_SPRITES: Record<Exclude<CardId, SpecialCard>, SpriteName> = {
   patrol: 'patrol',
   moguls: 'moguls',
   kicker: 'kicker',
@@ -60,20 +74,48 @@ const TILE_SPRITES: Record<
   tunnel: 'tunnel',
   checkpoint: 'checkpoint',
   blackRun: 'blackRun',
+  rail: 'rail',
+  corduroy: 'corduroy',
+  crevasse: 'crevasse',
+  powderStash: 'powderStash',
+  waxStation: 'waxStation',
+  ammoDump: 'ammoDump',
+  watchtower: 'watchtower',
+  firstAid: 'firstAid',
+  jammer: 'jammer',
+  deadDrop: 'deadDrop',
+  scrapYard: 'scrapYard',
+  ticketBooth: 'ticketBooth',
+  fuelDrums: 'fuelDrums',
+  apresBar: 'apresBar',
+  glacier: 'glacier',
+  cliff: 'cliff',
+  aspens: 'aspens',
+  hotSpring: 'hotSpring',
+  frozenLake: 'frozenLake',
+  windRidge: 'windRidge',
+  hamlet: 'hamlet',
 };
 
-const SPECIAL_SPRITES: Partial<Record<CardId, SpriteName>> = {
+const SPECIAL_SPRITES: Record<SpecialCard, SpriteName> = {
   avalanche: 'peak',
   chairlift: 'chairlift',
   chute: 'chute',
+  catTrack: 'corduroy',
   whiteout: 'powder',
   night: 'safehouse',
+  bluebird: 'powder',
+  blizzard: 'powder',
+  supplyDrop: 'cache',
+  pepTalk: 'flag',
+  airstrike: 'fuelDrums',
+  intelBrief: 'deadDrop',
   dossierWidow: 'widow',
   dossierYetiKing: 'yetiKing',
   dossierKickback: 'kickback',
 };
 
-export const spriteForCard = (card: CardId): SpriteName => SPECIAL_SPRITES[card] ?? TILE_SPRITES[card as keyof typeof TILE_SPRITES];
+export const spriteForCard = (card: CardId): SpriteName => SPECIAL_SPRITES[card as SpecialCard] ?? TILE_SPRITES[card as Exclude<CardId, SpecialCard>];
 
 const ROTATION: Record<Dir, number> = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 };
 
@@ -208,6 +250,8 @@ export class MapRenderer {
     if (weather === 'night') this.drawNight(run, view);
     this.fx.drawSnow(b);
     if (weather === 'whiteout') this.drawWhiteout(view.time);
+    if (weather === 'blizzard') this.drawBlizzard(view.time);
+    if (weather === 'bluebird') this.drawBluebird(view.time);
 
     // To the screen, scaled up and framed in ink.
     const ctx = this.ctx;
@@ -252,6 +296,36 @@ export class MapRenderer {
     const off = Math.floor((time * 14) % ART_W);
     this.bctx.drawImage(this.whiteoutLayer, -off, 0);
     this.bctx.drawImage(this.whiteoutLayer, ART_W * 2 - off, 0);
+  }
+
+  /** A blizzard: snow driving hard across the map in long streaks. */
+  private drawBlizzard(time: number): void {
+    const b = this.bctx;
+    b.fillStyle = 'rgba(255,255,255,0.18)';
+    b.fillRect(0, 0, ART_W, ART_H);
+    b.fillStyle = PAPER;
+    for (let k = 0; k < 140; k++) {
+      const speed = 90 + (k % 7) * 20;
+      const x = (k * 53 + time * speed) % (ART_W + 20) - 10;
+      const y = (k * 37 + time * speed * 0.35) % ART_H;
+      b.fillRect(Math.round(x), Math.round(y), 3 + (k % 3), 1);
+    }
+  }
+
+  /** A bluebird day: the odd glint of sun off the snow. */
+  private drawBluebird(time: number): void {
+    const b = this.bctx;
+    for (let k = 0; k < 14; k++) {
+      const phase = (time * 0.7 + k * 0.37) % 1;
+      if (phase > 0.25) continue;
+      const x = (k * 97) % ART_W;
+      const y = (k * 61) % ART_H;
+      b.fillStyle = PAPER;
+      b.fillRect(x - 2, y, 5, 1);
+      b.fillRect(x, y - 2, 1, 5);
+      b.fillStyle = RED;
+      b.fillRect(x, y, 1, 1);
+    }
   }
 
   /** Night: a dithered dark over everything except a pool of light around the skier and the lodge. */
@@ -445,7 +519,17 @@ export class MapRenderer {
 
   private drawSelection(run: Run, sel: Selection): void {
     const b = this.bctx;
-    if (CARDS[sel.card].kind === 'weather') {
+    if (sel.card === 'airstrike' && sel.hover) {
+      // The blast: every tile within one of the target.
+      const h = sel.hover;
+      b.fillStyle = 'rgba(229,32,46,0.22)';
+      b.fillRect((h.x - 1) * TILE, (h.y - 1) * TILE, TILE * 3, TILE * 3);
+      b.fillStyle = RED;
+      b.fillRect(h.x * TILE + 7, h.y * TILE - 6, 2, TILE + 12);
+      b.fillRect(h.x * TILE - 6, h.y * TILE + 7, TILE + 12, 2);
+      return;
+    }
+    if (CARDS[sel.card].kind === 'weather' || CARDS[sel.card].kind === 'action') {
       // Weather covers everything: frame the whole mountain.
       b.fillStyle = RED;
       for (let k = 0; k < ART_W; k += 4) {
@@ -473,7 +557,14 @@ export class MapRenderer {
     const h = sel.hover;
     if (!h) return;
     const ok = run.canPlace(sel.card, h.x, h.y);
-    if (ok && sel.card !== 'avalanche') {
+    if (ok && sel.card === 'catTrack') {
+      // Where the cat track would run.
+      b.fillStyle = RED;
+      for (const c of crossCourse(run.map, h.x, h.y, (k) => !!run.state.tiles[k]) ?? []) {
+        if (run.map.index[c] >= 0) continue;
+        b.fillRect((c % MAP_W) * TILE + 5, Math.floor(c / MAP_W) * TILE + 5, 6, 6);
+      }
+    } else if (ok && sel.card !== 'avalanche') {
       b.globalAlpha = 0.65;
       b.drawImage(this.atlas.get(spriteForCard(sel.card)), h.x * TILE, h.y * TILE);
       b.globalAlpha = 1;
