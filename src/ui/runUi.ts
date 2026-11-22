@@ -8,7 +8,8 @@ import { GADGETS, RARITY_NAMES, type Item, type Slot, type StatKey } from '../ga
 import { nodeAt } from '../game/map';
 import type { Run } from '../game/run';
 import { STANCES, type Stance } from '../game/stats';
-import { spriteForCard, type MapRenderer } from '../render/mapRenderer';
+import { cardArtUrl } from '../render/art/cardArt';
+import type { MapRenderer } from '../render/mapRenderer';
 import { spriteUrl, type SpriteName } from '../render/sprites';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => {
@@ -90,14 +91,9 @@ function formatStat(k: StatKey, v: number): string {
 }
 
 const artCache = new Map<string, string>();
-export function cardArt(card: CardId): string {
-  let url = artCache.get(card);
-  if (!url) {
-    url = card === 'avalanche' ? spriteUrl('peak', 4, { w: 'r', s: 'r' }) : spriteUrl(spriteForCard(card), 4);
-    artCache.set(card, url);
-  }
-  return url;
-}
+
+/** A card's illustration at the size the hand shows it. */
+export const cardArt = (card: CardId): string => cardArtUrl(card, 2);
 
 function iconUrl(item: Item): string {
   const key = `${item.slot}:${item.rarity}`;
@@ -300,7 +296,7 @@ export class RunUi {
       return;
     }
     const def = CARDS[card];
-    const html = `<span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i>${
+    const html = `<img class="tip-art" alt="" src="${cardArtUrl(card, 3)}"><span class="kind">${KIND_LABEL[def.kind]} · ${KIND_HINT[def.kind]}</span><b>${def.name}</b>${def.text}<i>${def.flavor}</i>${
       this.selected === i ? '<span class="kind">Click a dotted tile to place · Esc to cancel</span>' : '<span class="kind">Click to place · right-click to burn</span>'
     }`;
     if (this.changed('cardtip', html)) this.cardTip.innerHTML = html;

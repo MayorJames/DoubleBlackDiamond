@@ -6,7 +6,8 @@ import { RATINGS } from '../game/enemies';
 import { BUILDINGS, canAfford, DECK_MAX, DECK_MIN, deckFor, unlockedCards, type BuildingId, type Profile } from '../game/lodge';
 import type { CardId } from '../game/cards';
 import { spriteUrl, type SpriteName } from '../render/sprites';
-import { cardArt, formatCash } from './runUi';
+import { cardArtUrl } from '../render/art/cardArt';
+import { formatCash } from './runUi';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -76,7 +77,7 @@ export class LodgeUi {
         b.disabled = inDeck ? deck.length <= DECK_MIN : deck.length >= DECK_MAX;
         b.title = `${CARDS[id].name}: ${CARDS[id].text}${b.disabled ? (inDeck ? ` (a deck needs at least ${DECK_MIN} cards)` : ' (deck full: take a card out first)') : ''}`;
         b.setAttribute('aria-pressed', String(inDeck));
-        b.innerHTML = `<img alt="" src="${cardArt(id)}">${CARDS[id].name}`;
+        b.innerHTML = `<img alt="" src="${cardArtUrl(id, 1)}">${CARDS[id].name}`;
         return b;
       }),
     );

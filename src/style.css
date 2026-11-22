@@ -303,9 +303,10 @@ input:focus-visible {
 }
 
 .deck img {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   image-rendering: pixelated;
+  border: 1px solid var(--ink);
 }
 
 .expedition .go {
@@ -845,6 +846,19 @@ input:focus-visible {
   bottom: 152px;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.tip-art {
+  float: left;
+  width: 96px;
+  height: 96px;
+  margin: 0 10px 4px 0;
+  border: 2px solid var(--ink);
+  image-rendering: pixelated;
+}
+
+#card-tip {
+  max-width: 380px;
 }
 
 /* The side panel. */
