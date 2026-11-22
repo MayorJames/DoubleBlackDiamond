@@ -48,6 +48,11 @@ export class Sfx {
     skiSrc.connect(this.skiFilter).connect(this.skiGain).connect(this.master);
   }
 
+  /** The audio graph, once unlocked: for the music to play through the same master volume. */
+  get audio(): { ctx: AudioContext; out: AudioNode; noise: AudioBuffer } | null {
+    return this.ctx ? { ctx: this.ctx, out: this.master, noise: this.noise } : null;
+  }
+
   setVolume(v: number): void {
     this.volume = v;
     if (this.ctx) this.master.gain.value = this.muted ? 0 : v;

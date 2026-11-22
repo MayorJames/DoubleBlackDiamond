@@ -1,6 +1,7 @@
 // Wires everything: the lodge hub, an expedition (Run), the renderer, the UI, input and sound.
 // The run only changes through commands; everything else reads it.
 
+import { Music } from '../audio/music';
 import { Sfx } from '../audio/sfx';
 import { CARDS } from '../game/cards';
 import { ENEMIES, RATINGS, type BossKind } from '../game/enemies';
@@ -43,6 +44,7 @@ export class App {
   private readonly lodgeUi: LodgeUi;
   private readonly overlays: Overlays;
   private readonly sfx = new Sfx();
+  private readonly music = new Music(this.sfx);
   private readonly loop: FixedLoop;
   private readonly canvas = document.getElementById('map') as HTMLCanvasElement;
   private selection: Selection | null = null;
@@ -90,6 +92,15 @@ export class App {
     this.lodgeUi.scene.start();
     this.bindInput();
     this.loop.start();
+    // Browsers only allow sound after a gesture: start the lodge music on the first one.
+    window.addEventListener(
+      'pointerdown',
+      () => {
+        this.sfx.unlock();
+        this.music.setMode(this.run ? 'run' : 'lodge');
+      },
+      { once: true },
+    );
   }
 
   // --- Screens ------------------------------------------------------------------------------
@@ -109,6 +120,7 @@ export class App {
     this.renderer.resize();
     this.renderer.setRun(this.run);
     this.setSpeed(1);
+    this.music.setMode('run');
     try {
       history.replaceState(history.state, '', `${location.pathname}${location.search}#${seed}`);
     } catch {
@@ -127,6 +139,7 @@ export class App {
     this.lodgeUi.setSeed(randomSeed());
     this.lodgeUi.render(this.profile);
     this.lodgeUi.scene.start();
+    this.music.setMode('lodge');
   }
 
   private build(id: BuildingId): void {
@@ -348,6 +361,7 @@ export class App {
           this.runUi.banner(`${ENEMIES[e.kind].name} is down! +$1,000 and the ${e.reward}.`);
           this.sfx.fanfare();
           this.renderer.shake = 1;
+          if (!run.state.enemies.some((x) => x.kind === 'baron' || x.kind === 'widow' || x.kind === 'yetiKing' || x.kind === 'kickback')) this.music.setMode('run');
           break;
         case 'fragment':
           this.runUi.pop(`+ intel fragment ${e.count}/3`, e.x, e.y - 1.6, 'red');
@@ -395,6 +409,7 @@ export class App {
     this.autoPaused = false;
     this.sfx.alarm();
     this.renderer.shake = 0.8;
+    this.music.setMode('boss');
     this.overlays.showBoss(kind, () => this.setSpeed(resume || 1));
   }
 
@@ -404,6 +419,7 @@ export class App {
     this.select(null);
     this.overlays.hideTally();
     this.overlays.hideBoss();
+    this.music.setMode('lodge');
     if (!this.banked && st.payout) {
       this.banked = true;
       const before = this.profile.rating;
