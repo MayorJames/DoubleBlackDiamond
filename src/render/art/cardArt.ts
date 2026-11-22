@@ -5,6 +5,7 @@ import type { CardId } from '../../game/cards';
 import { bayer, Px } from './pixel';
 import { blackDiamond, cloud, flag, flakes, mountain, pine, range, sky, smoke, snowField } from './scenery';
 
+
 const S = 32;
 
 /** Sky, a far range and snow: the backdrop most cards share. */
@@ -48,6 +49,32 @@ function dossier(px: Px, photo: (px: Px, x: number, y: number) => void): void {
 }
 
 const ART: Record<CardId, (px: Px) => void> = {
+  whiteout(px) {
+    // Pines fading into a wall of blowing snow.
+    px.rect(0, 0, S, S, 'w');
+    pine(px, 6, 26, 16, { fill: 'l', shade: 'm', edge: 'm' });
+    pine(px, 22, 24, 12, { fill: 's', shade: 'l', edge: 'l' });
+    pine(px, 15, 30, 10, { fill: 'm', shade: 'd', edge: 'd' });
+    px.rect(0, 0, S, S, (x, y) => (bayer(x + Math.floor(y / 3), y, 5) ? 'w' : null));
+    for (let k = 0; k < 7; k++) px.line(k * 6 - 4, 4 + k * 4, k * 6 + 3, 2 + k * 4, 's');
+    flakes(px, 0, 0, S, S, 14, 7, 'l');
+  },
+  night(px) {
+    // A dark sky with a moon and stars over black peaks and a lit chalet window.
+    px.vgrad(0, 0, S, 22, 'k', 'd');
+    px.disc(24, 7, 4, (x, y) => (x > 25 && y > 6 ? 's' : 'w'));
+    px.disc(23, 6, 1, 's');
+    flakes(px, 0, 0, S, 16, 9, 4, 'w');
+    mountain(px, -6, 26, 26, 9, 10, { tones: ['l', 'm', 'd', 'k'], snow: 5, seed: 2 });
+    mountain(px, 12, 40, 26, 27, 13, { tones: ['l', 'm', 'd', 'k'], snow: 4, seed: 5 });
+    px.rect(0, 25, S, 7, (x, y) => (bayer(x, y, 6) ? 'm' : 'd'));
+    px.rect(5, 19, 12, 8, 'd');
+    px.poly([[3, 20], [11, 14], [19, 20]], 'm');
+    px.line(3, 20, 11, 14, 'k');
+    px.line(11, 14, 19, 20, 'k');
+    px.rect(8, 21, 4, 3, 'r');
+    px.rect(9, 27, 3, 2, 'q');
+  },
   dossierWidow(px) {
     dossier(px, (p, x, y) => {
       p.ellipse(x + 6, y + 6, 6, 6, 'k');

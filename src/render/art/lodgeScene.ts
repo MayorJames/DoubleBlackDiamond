@@ -13,7 +13,8 @@ export const SCENE_H = 120;
 const B = 111; // ground line for the buildings
 
 /** Where each building stands: left edge, and its box for hovering. */
-export const PLOTS: Record<BuildingId, { x: number; top: number }> = {
+export const PLOTS: Record<BuildingId, { x: number; top: number; base?: number }> = {
+  weatherStation: { x: 58, top: 16, base: 42 },
   trailCrew: { x: 2, top: B - 22 },
   patrolHut: { x: 34, top: B - 26 },
   radio: { x: 66, top: B - 50 },
@@ -70,6 +71,20 @@ function roof(px: Px, x0: number, x1: number, eave: number, peak: number): void 
 }
 
 const BUILDINGS: Record<BuildingId, (px: Px, x: number) => void> = {
+  weatherStation(px, x) {
+    // A hut on the next peak with an instrument mast and a windsock (cups and sock move each frame).
+    px.ellipse(x + 14, B + 1, 15, 4, (i, j) => (j > B && bayer(i, j, 6) ? 's' : 'w'));
+    px.rect(x + 3, B - 10, 14, 10, 'w');
+    px.rect(x + 3, B - 10, 1, 10, 'k');
+    px.rect(x + 16, B - 10, 1, 10, 'k');
+    px.rect(x + 2, B - 12, 16, 2, 'd');
+    px.rect(x + 2, B - 13, 16, 1, 'w');
+    px.rect(x + 6, B - 7, 4, 7, 'd');
+    px.rect(x + 12, B - 7, 3, 3, 'm');
+    px.rect(x + 20, B - 24, 1, 24, 'k');
+    px.rect(x + 17, B - 18, 7, 1, 'k');
+    px.rect(x + 26, B - 16, 1, 16, 'k');
+  },
   trailCrew(px, x) {
     // A plank shed, shovels against it, and a bundle of red-and-white trail poles.
     px.rect(x + 2, B - 14, 20, 14, (i) => (i % 4 === 0 ? 'd' : 'm'));
@@ -285,8 +300,12 @@ function drawStatic(built: readonly BuildingId[]): HTMLCanvasElement {
 
   drawLodge(px);
   for (const id of Object.keys(PLOTS) as BuildingId[]) {
-    if (built.includes(id)) BUILDINGS[id](px, PLOTS[id].x);
-    else plot(px, PLOTS[id].x);
+    const { x, base = B } = PLOTS[id];
+    // Plots off the valley floor are drawn on the ground line, then lifted into place.
+    const target = base === B ? px : new Px(SCENE_W, SCENE_H);
+    if (built.includes(id)) BUILDINGS[id](target, x);
+    else plot(target, x);
+    if (target !== px) px.blit(target, 0, base - B);
   }
   return px.canvas();
 }
@@ -401,7 +420,7 @@ export class LodgeScene {
     const x = (cssX * this.dpr) / this.scale;
     const y = (cssY * this.dpr) / this.scale;
     for (const [id, p] of Object.entries(PLOTS) as [BuildingId, (typeof PLOTS)[BuildingId]][]) {
-      if (x >= p.x && x < p.x + PLOT_W + 2 && y >= p.top && y <= B + 1) return id;
+      if (x >= p.x && x < p.x + PLOT_W + 2 && y >= p.top && y <= (p.base ?? B) + 1) return id;
     }
     return null;
   }
@@ -478,6 +497,14 @@ export class LodgeScene {
       dot(x - 1, y + 3, 'w', 3, 1);
     }
 
+    // The weather station's cups spin and its windsock flies.
+    if (this.built.includes('weatherStation')) {
+      const { x: wx, base = B } = PLOTS.weatherStation;
+      const a = t * 9;
+      for (const k of [0, Math.PI]) dot(wx + 20 + Math.cos(a + k) * 3, base - 25 + Math.sin(a + k) * 0.8, 'k', 2, 1);
+      for (let i = 0; i < 5; i++) dot(wx + 27 + i, base - 16 + Math.round(Math.sin(t * 6 + i) * 0.6 + i * 0.3), i % 2 ? 'w' : 'r', 1, 2);
+    }
+
     // The radio mast's light.
     if (this.built.includes('radio') && Math.floor(t * 1.5) % 2 === 0) {
       const x = PLOTS.radio.x + 21;
@@ -511,11 +538,12 @@ export class LodgeScene {
     // The building under the mouse gets a dotted red frame.
     if (this.hover) {
       const p = PLOTS[this.hover];
+      const base = p.base ?? B;
       for (let x = p.x; x < p.x + PLOT_W + 2; x += 2) {
         dot(x, p.top - 2, 'r');
-        dot(x, B + 2, 'r');
+        dot(x, base + 2, 'r');
       }
-      for (let y = p.top - 2; y <= B + 2; y += 2) {
+      for (let y = p.top - 2; y <= base + 2; y += 2) {
         dot(p.x, y, 'r');
         dot(p.x + PLOT_W + 1, y, 'r');
       }

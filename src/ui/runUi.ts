@@ -27,6 +27,7 @@ const KIND_LABEL: Record<CardKind, string> = {
   special: 'Special',
   route: 'Route',
   boss: 'Boss',
+  weather: 'Weather',
 };
 const KIND_HINT: Record<CardKind, string> = {
   trail: 'Goes on the trail itself.',
@@ -35,6 +36,7 @@ const KIND_HINT: Record<CardKind, string> = {
   special: 'Goes on a tile you already placed.',
   route: 'Goes on the trail where there is a clear line straight up (lift) or down (chute) to more trail.',
   boss: 'Goes on the trail. Assembled from three intel fragments.',
+  weather: 'Click anywhere on the map: it covers the whole mountain.',
 };
 const ROUTE_NAME = { lift: 'Chairlift', chute: 'Chute' } as const;
 const STANCE_TEXT: Record<Stance, string> = {
@@ -203,6 +205,9 @@ export class RunUi {
     this.text('run-cash', formatCash(st.cash));
     this.text('run-intel', String(st.intel));
     this.text('run-scrap', String(st.scrap));
+    const weather = st.weather;
+    document.querySelector('.tb.weather')!.classList.toggle('hidden', !weather);
+    if (weather) this.text('weather-text', `${weather.kind === 'night' ? 'Night' : 'Whiteout'} · ${weather.days}d`);
     this.text('run-frag', st.routes.some((r) => r.kind === 'lift') ? `${st.fragments}/3` : 'build a lift');
     document.querySelectorAll<HTMLButtonElement>('.tb.speed button').forEach((b) =>
       b.classList.toggle('on', Number(b.dataset.speed) === speed),

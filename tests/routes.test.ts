@@ -343,3 +343,42 @@ describe('dossier bosses', () => {
     }
   });
 });
+
+describe('weather', () => {
+  it('lasts three days, then clears', () => {
+    const run = Run.create({ seed: 'alpine', deck: STARTER_DECK });
+    run.state.hand.unshift('night');
+    run.step([{ type: 'place', hand: 0, x: 0, y: 0 }]);
+    expect(run.state.weather).toEqual({ kind: 'night', days: 3 });
+    const events = ride(
+      run,
+      () => run.state.weather === null,
+      () => (run.state.status === 'lodge' ? [{ type: 'rideAgain' }] : []),
+    );
+    expect(events.some((e) => e.type === 'weather' && e.kind === null)).toBe(true);
+    expect(run.state.day).toBe(4);
+  });
+
+  it('a whiteout keeps a guard just out of sight from shooting, and doubles kill chips', () => {
+    const shotsAt = (weather: boolean) => {
+      const run = Run.create({ seed: 'alpine', deck: STARTER_DECK });
+      if (weather) {
+        run.state.hand.unshift('whiteout');
+        run.step([{ type: 'place', hand: 0, x: 0, y: 0 }]);
+      }
+      run.drainEvents();
+      let shots = 0;
+      for (let t = 0; t < 90; t++) {
+        const me = run.heroPos();
+        // A guard 1.2 tiles away: in reach normally (1.4), out of it in a whiteout (0.84).
+        run.state.enemies = [{ id: 1, kind: 'guard', level: 1, hp: 999, maxHp: 999, x: me.x + 1.2, y: me.y, ride: null, home: -1, cooldown: 0 }];
+        run.state.hero.hp = 999;
+        run.step();
+        shots += run.drainEvents().filter((e) => e.type === 'enemyShot').length;
+      }
+      return shots;
+    };
+    expect(shotsAt(false)).toBeGreaterThan(0);
+    expect(shotsAt(true)).toBe(0);
+  });
+});

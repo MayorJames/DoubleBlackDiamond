@@ -26,6 +26,17 @@ import { computeStats, hasGadget, NO_BONUSES, powderHeal, STANCES, type Equipmen
 export const RUN_VERSION = 3;
 
 export type RunStatus = 'riding' | 'lodge' | 'won' | 'retreated' | 'bailed' | 'wiped';
+export type WeatherKind = 'whiteout' | 'night';
+
+/** How weather bends the rules while it lasts. */
+export const WEATHER = {
+  days: 3,
+  whiteoutRange: 0.6,
+  whiteoutChips: 2,
+  nightEnemyAim: 0.6,
+  nightAim: 0.85,
+  nightLoot: 1.5,
+};
 
 export interface HandLine {
   label: string;
@@ -80,6 +91,8 @@ export interface RunState {
   boss: { meter: number; max: number; spawned: boolean };
   lapHand: LapHand;
   permanentMult: number;
+  /** The weather over the whole mountain, and how many more days it lasts. */
+  weather: { kind: WeatherKind; days: number } | null;
   /** Intel fragments towards the next dossier (three make one). */
   fragments: number;
   cash: number;
@@ -119,6 +132,7 @@ export type RunEvent =
   | { type: 'lap'; lap: number; chips: number; mult: number; points: number; lines: HandLine[]; lapTime: number; descents: number }
   | { type: 'day'; day: number }
   | { type: 'boss' }
+  | { type: 'weather'; kind: WeatherKind | null }
   | { type: 'bossArrives'; kind: EnemyKind }
   | { type: 'bossDown'; kind: BossKind; reward: string }
   | { type: 'fragment'; count: number; x: number; y: number }
@@ -215,6 +229,7 @@ export class Run {
       boss: { meter: 0, max: RATINGS[rating].boss, spawned: false },
       lapHand: freshHand(0),
       permanentMult: 0,
+      weather: null,
       fragments: 0,
       cash: 0,
       intel: 0,
@@ -403,7 +418,11 @@ export class Run {
     const route = ROUTE_OF[card];
     const boss = BOSS_OF[card];
 
-    if (boss) {
+    if (card === 'whiteout' || card === 'night') {
+      st.weather = { kind: card, days: WEATHER.days };
+      st.record.placed++;
+      this.events.push({ type: 'weather', kind: card });
+    } else if (boss) {
       this.summon(boss, x, y);
     } else if (route) {
       // New routes open straight away: the switch starts on the route you just built.
@@ -579,6 +598,10 @@ export class Run {
   private newDay(): void {
     const st = this.state;
     this.events.push({ type: 'day', day: st.day });
+    if (st.weather && --st.weather.days <= 0) {
+      st.weather = null;
+      this.events.push({ type: 'weather', kind: null });
+    }
     const chasers = st.enemies.filter((e) => e.ride && e.kind === 'snowmobile').length;
     st.tiles.forEach((t, c) => {
       if (!t) return;
@@ -724,7 +747,7 @@ export class Run {
       if (pines) {
         const bonus = hasGadget(st.equipment, 'treeHugger') ? 0.05 * pines : 0;
         st.permanentMult += bonus;
-        this.addChips('Graze', 4 * pines, bonus, cx, cy);
+        this.addChips('Graze', 4 * pines * (st.weather?.kind === 'whiteout' ? WEATHER.whiteoutChips : 1), bonus, cx, cy);
       }
     }
     for (const [nx, ny] of neighbours(p.x, p.y)) {
@@ -828,7 +851,10 @@ export class Run {
     const tile = this.map.nodes[this.heroNode()];
     const onLift = tile.kind === 'lift';
     const onIce = st.tiles[cell(tile.x, tile.y)]?.card === 'ice';
-    const terrainAim = (onIce ? 0.6 : 1) * (tile.kind === 'chute' ? ROUTE_TUNING.chuteAim : 1);
+    const whiteout = st.weather?.kind === 'whiteout';
+    const night = st.weather?.kind === 'night';
+    const sight = whiteout ? WEATHER.whiteoutRange : 1;
+    const terrainAim = (onIce ? 0.6 : 1) * (tile.kind === 'chute' ? ROUTE_TUNING.chuteAim : 1) * (night ? WEATHER.nightAim : 1);
 
     // Chasers ride the mountain too, and follow the same switches.
     for (const e of st.enemies) {
@@ -850,7 +876,7 @@ export class Run {
     hero.cooldown -= DT;
     if ((!hero.airborne || airhead) && hero.cooldown <= 0) {
       let target: Enemy | null = null;
-      let best = stats.range;
+      let best = stats.range * sight;
       for (const e of st.enemies) {
         const d = Math.hypot(e.x - me.x, e.y - me.y);
         if (d <= best) {
@@ -883,7 +909,7 @@ export class Run {
       const def = ENEMIES[e.kind];
       e.cooldown -= DT;
       const d = Math.hypot(e.x - me.x, e.y - me.y);
-      if (d > def.range) {
+      if (d > def.range * sight) {
         e.cooldown = Math.max(e.cooldown, def.interval * 0.4);
         continue;
       }
@@ -895,7 +921,7 @@ export class Run {
         this.events.push({ ...base, hit: false, damage: 0, air: true });
         continue;
       }
-      const hit = rng.next() < def.accuracy * (1 - evasion);
+      const hit = rng.next() < def.accuracy * (1 - evasion) * (night ? WEATHER.nightEnemyAim : 1);
       const damage = hit ? Math.max(1, Math.round(def.damage * scale.damage) - stats.defense - stance.defense) : 0;
       this.events.push({ ...base, hit, damage, air: false });
       if (!hit) continue;
@@ -913,7 +939,7 @@ export class Run {
     if (e.hp > 0) return;
     const def = ENEMIES[e.kind];
     const scale = levelScale(e.level, st.rating);
-    const chips = Math.round(def.chips * scale.chips);
+    const chips = Math.round(def.chips * scale.chips * (st.weather?.kind === 'whiteout' ? WEATHER.whiteoutChips : 1));
     st.record.kills++;
     st.lapHand.combo++;
     this.events.push({ type: 'kill', enemy: e.id, kind: e.kind, x: e.x, y: e.y, chips });
@@ -924,11 +950,12 @@ export class Run {
     }
 
     // Loot, Loop Hero style: cards, gear and resources.
-    if (this.rng.chance(def.cardChance)) {
+    const loot = st.weather?.kind === 'night' ? WEATHER.nightLoot : 1;
+    if (this.rng.chance(Math.min(1, def.cardChance * loot))) {
       this.drawCard();
       this.events.push({ type: 'loot', what: 'card', label: 'Card', x: e.x, y: e.y });
     }
-    if (this.rng.chance(def.itemChance)) {
+    if (this.rng.chance(Math.min(1, def.itemChance * loot))) {
       const item =
         e.kind === 'baron'
           ? rollGadget(this.rng, st.nextId++, st.descent, 2)

@@ -335,6 +335,12 @@ export class App {
           break;
         case 'boss':
           break;
+        case 'weather':
+          if (e.kind === 'whiteout') this.runUi.banner('Whiteout! Nobody can see far for 3 days. Kills and grazes pay double.');
+          else if (e.kind === 'night') this.runUi.banner('Night falls. Enemies miss more, loot drops more, for 3 days.');
+          else this.runUi.banner('The weather clears.');
+          this.sfx.chime();
+          break;
         case 'bossArrives':
           if (e.kind === 'baron' || e.kind === 'widow' || e.kind === 'yetiKing' || e.kind === 'kickback') this.bossArrives(e.kind);
           break;

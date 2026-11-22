@@ -22,6 +22,8 @@ export type CardId =
   | 'avalanche'
   | 'chairlift'
   | 'chute'
+  | 'whiteout'
+  | 'night'
   | 'dossierWidow'
   | 'dossierYetiKing'
   | 'dossierKickback';
@@ -30,7 +32,7 @@ export type CardId =
  * Where a card can go: on the trail, beside the path, any open snow, on a placed tile, or (for
  * routes) on a trail tile with a clear line straight up or down to more trail.
  */
-export type CardKind = 'trail' | 'roadside' | 'landscape' | 'special' | 'route' | 'boss';
+export type CardKind = 'trail' | 'roadside' | 'landscape' | 'special' | 'route' | 'boss' | 'weather';
 
 export interface CardDef {
   id: CardId;
@@ -89,6 +91,24 @@ export const CARDS: Record<CardId, CardDef> = {
     'Cuts a steep chute from this trail tile down to the trail below. Very fast, +0.2 mult a tile, and it skips everything in between.',
     'Scraped clean by the brave and the stupid.',
   ),
+  whiteout: def(
+    'whiteout',
+    'Whiteout',
+    'weather',
+    1,
+    1,
+    'For 3 days, everyone can only see 60% as far: you and them. Kills and grazes pay double chips.',
+    'You can hear them. You just cannot see them.',
+  ),
+  night: def(
+    'night',
+    'Night',
+    'weather',
+    1,
+    1,
+    'For 3 days, enemies hit 40% less often and your aim drops 15%. Cards and gear drop half as often again.',
+    'Black jacket optional.',
+  ),
   dossierWidow: dossier(
     'dossierWidow',
     'Dossier: Ice Widow',
@@ -141,6 +161,8 @@ export const newTiles = (): Tiles => new Array(MAP_W * MAP_H).fill(null);
 export function canPlace(map: MountainMap, tiles: Tiles, card: CardId, x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return false;
   const kind = CARDS[card].kind;
+  // Weather covers the whole mountain: click anywhere.
+  if (kind === 'weather') return true;
   // A route can share its junction with a trail card, but can't cross anything you've placed.
   if (kind === 'route') return !!routeCourse(map, ROUTE_OF[card]!, x, y, (c) => !!tiles[c]);
   const placed = tiles[cell(x, y)];

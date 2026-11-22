@@ -8,7 +8,7 @@ import type { BossKind } from './enemies';
 import type { Payout, RunStatus } from './run';
 import { NO_BONUSES, type LodgeBonuses } from './stats';
 
-export type BuildingId = 'trailCrew' | 'patrolHut' | 'gondola' | 'radio' | 'spyHq' | 'rental' | 'sauna' | 'avalancheControl';
+export type BuildingId = 'weatherStation' | 'trailCrew' | 'patrolHut' | 'gondola' | 'radio' | 'spyHq' | 'rental' | 'sauna' | 'avalancheControl';
 
 export interface Building {
   id: BuildingId;
@@ -24,6 +24,7 @@ export const BUILDINGS: Building[] = [
   { id: 'radio', name: 'Radio Tower', cost: { cash: 400, intel: 6, scrap: 0 }, text: 'Unlocks Sniper Nest and Snowmobile Garage. More danger, more loot.', unlocks: ['sniper', 'garage'] },
   { id: 'gondola', name: 'Gondola Works', cost: { cash: 500, intel: 0, scrap: 6 }, text: 'Unlocks Kicker and Ice Sheet cards.', unlocks: ['kicker', 'ice'] },
   { id: 'avalancheControl', name: 'Avalanche Control', cost: { cash: 500, intel: 3, scrap: 4 }, text: 'Unlocks Peak and Avalanche cards.', unlocks: ['peak', 'avalanche'] },
+  { id: 'weatherStation', name: 'Weather Station', cost: { cash: 600, intel: 5, scrap: 4 }, text: 'Unlocks the Whiteout and Night weather cards.', unlocks: ['whiteout', 'night'] },
   { id: 'spyHq', name: 'Spy HQ', cost: { cash: 900, intel: 12, scrap: 4 }, text: 'Unlocks the Safehouse card, gadget drops and a second gadget slot.', unlocks: ['safehouse'] },
   { id: 'rental', name: 'Rental Shop', cost: { cash: 700, intel: 0, scrap: 10 }, text: '+10% speed, and better gear drops.', unlocks: [] },
   { id: 'sauna', name: 'Sauna', cost: { cash: 800, intel: 6, scrap: 6 }, text: '+25% max HP.', unlocks: [] },

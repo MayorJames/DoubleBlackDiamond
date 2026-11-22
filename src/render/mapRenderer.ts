@@ -3,12 +3,13 @@
 // way a junction isn't sending you, and the skier and enemies on top. Everything is drawn at art
 // resolution (16px tiles) and scaled up by a whole number so pixels stay crisp.
 
-import type { CardId, TileState } from '../game/cards';
+import { CARDS, type CardId, type TileState } from '../game/cards';
 import { MAP_H, MAP_W, TILE } from '../game/constants';
 import { isBoss, type Enemy } from '../game/enemies';
 import { dirOf, rideNode, type Dir, type MountainMap, type Segment } from '../game/map';
 import type { Run } from '../game/run';
 import { hashSeed } from '../game/rng';
+import { bayer } from './art/pixel';
 import { Fx, line } from './fx';
 import {
   BACKDROP,
@@ -33,7 +34,10 @@ import { Atlas, type SpriteName } from './sprites';
 export const ART_W = MAP_W * TILE;
 export const ART_H = MAP_H * TILE;
 
-const TILE_SPRITES: Record<Exclude<CardId, 'avalanche' | 'chairlift' | 'chute' | 'dossierWidow' | 'dossierYetiKing' | 'dossierKickback'>, SpriteName> = {
+const TILE_SPRITES: Record<
+  Exclude<CardId, 'avalanche' | 'chairlift' | 'chute' | 'whiteout' | 'night' | 'dossierWidow' | 'dossierYetiKing' | 'dossierKickback'>,
+  SpriteName
+> = {
   patrol: 'patrol',
   moguls: 'moguls',
   kicker: 'kicker',
@@ -53,6 +57,8 @@ const SPECIAL_SPRITES: Partial<Record<CardId, SpriteName>> = {
   avalanche: 'peak',
   chairlift: 'chairlift',
   chute: 'chute',
+  whiteout: 'powder',
+  night: 'safehouse',
   dossierWidow: 'widow',
   dossierYetiKing: 'yetiKing',
   dossierKickback: 'kickback',
@@ -182,7 +188,10 @@ export class MapRenderer {
     for (const a of actors) a.draw();
 
     this.fx.draw(b);
+    const weather = run.state.weather?.kind;
+    if (weather === 'night') this.drawNight(run, view);
     this.fx.drawSnow(b);
+    if (weather === 'whiteout') this.drawWhiteout(view.time);
 
     // To the screen, scaled up and framed in ink.
     const ctx = this.ctx;
@@ -203,6 +212,67 @@ export class MapRenderer {
       ctx.fillStyle = 'rgba(20,20,20,0.18)';
       ctx.fillRect(this.ox + sx, this.oy + sy, w, h);
     }
+  }
+
+  // --- Weather ------------------------------------------------------------------------------
+
+  private whiteoutLayer: HTMLCanvasElement | null = null;
+  private nightLayer: HTMLCanvasElement | null = null;
+  private nightCut: HTMLCanvasElement | null = null;
+
+  /** Blowing snow: banks of dithered white drifting across, twice the map wide so it can scroll. */
+  private drawWhiteout(time: number): void {
+    if (!this.whiteoutLayer) {
+      const [c, ctx] = canvas(ART_W * 2, ART_H);
+      const img = ctx.createImageData(ART_W * 2, ART_H);
+      for (let y = 0; y < ART_H; y++)
+        for (let x = 0; x < ART_W * 2; x++) {
+          const band = 7 + 4 * Math.sin((x / (ART_W * 2)) * Math.PI * 6 + y * 0.09) + 2 * Math.sin(x * 0.05 - y * 0.13);
+          if (bayer(x, y, band)) img.data.set([255, 255, 255, 255], (y * ART_W * 2 + x) * 4);
+        }
+      ctx.putImageData(img, 0, 0);
+      this.whiteoutLayer = c;
+    }
+    const off = Math.floor((time * 14) % ART_W);
+    this.bctx.drawImage(this.whiteoutLayer, -off, 0);
+    this.bctx.drawImage(this.whiteoutLayer, ART_W * 2 - off, 0);
+  }
+
+  /** Night: a dithered dark over everything except a pool of light around the skier and the lodge. */
+  private drawNight(run: Run, view: FrameView): void {
+    if (!this.nightLayer) {
+      const [c, ctx] = canvas(ART_W, ART_H);
+      // A smooth dark keeps the trail readable; a sparse dither gives it texture.
+      const img = ctx.createImageData(ART_W, ART_H);
+      for (let y = 0; y < ART_H; y++)
+        for (let x = 0; x < ART_W; x++) img.data.set(bayer(x, y, 3) ? [10, 10, 24, 200] : [16, 16, 34, 150], (y * ART_W + x) * 4);
+      ctx.putImageData(img, 0, 0);
+      this.nightLayer = c;
+      this.nightCut = canvas(ART_W, ART_H)[0];
+    }
+    const cut = this.nightCut!;
+    const ctx = cut.getContext('2d')!;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, ART_W, ART_H);
+    ctx.drawImage(this.nightLayer, 0, 0);
+    ctx.globalCompositeOperation = 'destination-out';
+    const hole = (cx: number, cy: number, r: number) => {
+      for (let y = Math.floor(cy - r); y <= cy + r; y++) {
+        const half = Math.sqrt(Math.max(0, r * r - (y - cy) ** 2));
+        ctx.fillRect(Math.round(cx - half), y, Math.round(half * 2), 1);
+      }
+    };
+    // The pool of light has a dithered rim: a ring cut at half strength, then the bright core.
+    const hx = view.hero.x * TILE;
+    const hy = view.hero.y * TILE - 4;
+    const r = 30 + Math.sin(view.time * 3) * 1.5;
+    ctx.globalAlpha = 0.5;
+    hole(hx, hy, r + 6);
+    ctx.globalAlpha = 1;
+    hole(hx, hy, r);
+    const lodge = run.map.nodes[0];
+    hole(lodge.x * TILE + 8, lodge.y * TILE + 8, 14);
+    this.bctx.drawImage(cut, 0, 0);
   }
 
   // --- Static layers ------------------------------------------------------------------------
@@ -358,6 +428,19 @@ export class MapRenderer {
 
   private drawSelection(run: Run, sel: Selection): void {
     const b = this.bctx;
+    if (CARDS[sel.card].kind === 'weather') {
+      // Weather covers everything: frame the whole mountain.
+      b.fillStyle = RED;
+      for (let k = 0; k < ART_W; k += 4) {
+        b.fillRect(k, 0, 2, 2);
+        b.fillRect(k, ART_H - 2, 2, 2);
+      }
+      for (let k = 0; k < ART_H; k += 4) {
+        b.fillRect(0, k, 2, 2);
+        b.fillRect(ART_W - 2, k, 2, 2);
+      }
+      return;
+    }
     for (let y = 0; y < MAP_H; y++) {
       for (let x = 0; x < MAP_W; x++) {
         if (!run.canPlace(sel.card, x, y)) continue;
