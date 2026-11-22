@@ -20,8 +20,8 @@ When two ideas collide, the one that serves more of these wins.
    the mult.
 4. **Short runs, absurd builds.** Laps take 20 to 45 seconds and expeditions a few minutes, and the
    best ones end in a broken combination of tiles, routes and gadgets.
-5. **Small and instant.** A browser tab, about 30 kB of code, no image or sound files: every sprite
-   and sound is made at startup.
+5. **Small and instant.** A browser tab, about 50 kB gzipped in all, no image or sound files: every
+   sprite, illustration and note of music is made at startup.
 
 ## The expedition loop
 
@@ -75,6 +75,18 @@ When two ideas collide, the one that serves more of these wins.
 - **Dead Cells.** A fixed set of gear slots (gun, skis, goggles, jacket) plus gadget slots, so each
   pick matters.
 
+## Art direction
+
+Two levels of detail, on purpose:
+
+- **The run is low-res.** The mountain map uses chunky 16px tiles and sprites, so it stays readable at
+  a glance while you plan and the skier is moving.
+- **Everything you stop to look at is detailed.** Card illustrations (32x32 scenes), the lodge
+  panorama (360x120, animated, with every building drawn), boss portraits (40x40) and your portrait
+  are drawn with a small pixel-art toolkit: ordered dithering for skies and shading, shaded
+  mountains, pines with snow on the boughs, smoke, clouds. Ink, greys and one red throughout.
+- `npm run dev` then `/gallery.html` shows every illustration on one page for checking art.
+
 ## Systems
 
 ### The mountain
@@ -122,6 +134,9 @@ gives the route rules for free:
 | Peak | Landscape | +8 max HP; a 3x3 of peaks and boulders is a Double Black Diamond (+40 HP, yetis) |
 | Powder Field | Landscape | Heals every day, more beside pines |
 | Avalanche | Special | Wipes a placed tile and everything around it |
+| Whiteout | Weather | 3 days: everyone sees 60% as far; kills and grazes pay double |
+| Night | Weather | 3 days: enemies hit less, you aim worse, more loot |
+| Dossier (x3) | Boss | Summons the Ice Widow, the Yeti King or Captain Kickback; from three intel fragments |
 | Chairlift | Route | A lift from the trail back up to the trail above: chain another descent |
 | Chute | Route | A steep shortcut straight down to the trail below |
 
@@ -138,6 +153,29 @@ snowmobiles and the Baron chase you along the loop.
 | Cruise | 100% | 100% | — | — |
 | Snowplow | 55% | 135% | −5% | +2 defense |
 
+### Bosses
+
+| Boss | How they come | What they do | Reward |
+| --- | --- | --- | --- |
+| The Avalanche Baron | The alert meter fills as you place cards | Chases you round the mountain in his snowcat | Wins the expedition and unlocks the next rating |
+| The Ice Widow | Dossier card | Holds her tile, shoots from 3.4 tiles, freezes the trail around her to ice | The Widow's Monocle: +15% crit, triple crits |
+| The Yeti King | Dossier card | Holds his tile, hits hard up close, calls a yeti down every day | The Yeti Pelt: +45 max HP, +1 regen, +3 defense |
+| Captain Kickback | Dossier card | Laps the mountain on a rocket sled at 2.9 tiles/s, following your switches | The Getaway Sled: +2 mult per chained descent, bailing keeps 80% |
+
+Intel fragments drop from snipers (35%), snowmobiles (35%), yetis (always) and guards (6%), but only
+once you've built a chairlift: the vision's rule that bosses come to a mountain with two lifts.
+Three fragments make a dossier for a boss you haven't faced this expedition. Dossier bosses pay a
+$1,000 bounty and drop a one-of-a-kind reward that never turns up as ordinary loot; beaten ones are
+kept as trophies at the lodge. A boss's arrival stops the clock and shows their dossier.
+
+### Weather
+
+Weather cards cover the whole mountain for 3 days (click anywhere to play one):
+
+- **Whiteout:** everyone sees 60% as far, you and them; kills and grazes pay double chips.
+- **Night:** enemies hit 40% less often, your aim drops 15%, and cards and gear drop half as often
+  again.
+
 ### Loot and gear
 
 Kills drop cards (most enemies around 45%), gear (around 30%) and intel or scrap. Gear has three
@@ -151,6 +189,7 @@ burn cards on purpose too.
 | Building | Unlocks |
 | --- | --- |
 | Trail Crew | Chute |
+| Weather Station | Whiteout, Night |
 | Ski Patrol Hut | Supply Cache, Powder Field |
 | Radio Tower | Sniper Nest, Snowmobile Garage |
 | Gondola Works | Kicker, Ice Sheet |
@@ -199,17 +238,15 @@ room. A small deck makes the cards you want come up more often; a wide one cover
 | Meta | Segment graph and card placement | Done, within an expedition (see the open question above) |
 | Meta | Drops, shops, card burning, unlocks, seeded runs | Partly: drops, burning, buildings and seeds; no shops yet |
 | Meta | The four trail ratings | Done |
-| Meta | Boss cards from intel dossiers | Not yet: the Baron comes from a meter instead |
+| Meta | Boss cards from intel dossiers | Done: three dossier bosses with one-of-a-kind rewards, plus the Baron from the meter |
 | Meta | The snowboarder | Not yet |
-| Polish | Fog, juice, soundtrack | Partly: card juice and sound effects; no music or weather |
+| Polish | Fog, juice, soundtrack | Done for now: detailed card art, the lodge panorama, portraits, whiteout and night, and a surf-spy soundtrack |
 | Multiplayer | Second player and split screen | Not yet; the simulation rules allow it |
 
 ## Next
 
-- **Intel dossiers** that assemble into boss cards with one-of-a-kind rewards, and more bosses. The
-  vision gates them on finishing runs on a mountain with two lifts, which is now possible.
-- **Weather cards** (whiteout, night) and more synergies with routes: snipers in the chairs, a
-  gondola, moguls that only pay in a chute.
+- **More synergies with routes and weather:** snipers riding the chairs, a gondola route, moguls
+  that only pay in a chute, cards that only work at night.
 - **A shop** at the lodge or mid-run, so cards and gear can be bought as well as found.
 - **The snowboarder** as a second class with its own handling and stances.
 - A soundtrack, daily seeds, and a race on a shared seed.
